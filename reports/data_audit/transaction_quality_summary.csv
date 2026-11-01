@@ -7,7 +7,7 @@ Unique Participant Identifiers,300,0.421,Unique non-null participants
 Unique Charger Identifiers,301,0.4224,Unique physical chargers
 Missing ParticipantID,3899,5.4712,Unattributed sessions (3774 records match known participant sessions on the four session fields; other transaction fields may differ; 125 belong to unregistered charger 4441003917)
 Missing CarKW / CarKWh,3899,5.4712,Vehicle specification missingness in transactions
-Missing ConsumedkWh,1,0.0014,Records with missing metered electrical energy (1 record(s))
+Missing ConsumedkWh,1,0.0014,Records with missing metered electrical energy (1 record)
 ConsumedkWh <= 0,0,0.0,Zero or negative energy readings
 ConsumedkWh > 100 kWh (Implausible Threshold),20,0.0281,Official Electric Nation implausible consumption threshold
 ConsumedkWh > 150 kWh (Extreme Outliers),12,0.0168,"Extreme energy consumption outliers reaching 37,487.88 kWh"
@@ -17,7 +17,7 @@ StopTime == StartTime (Zero Duration),92,0.1291,Instantaneous connect/disconnect
 Sessions Shorter than 5 Minutes (< 5 min),561,0.7872,Micro-sessions excluded from modeling population
 Sessions Longer than 336 Hours (> 14 days),23,0.0323,Unclosed sessions capped at 336 hours for target
 Missing ChargingDuration,20861,29.2728,Unmonitored active power intervals
-ChargingDuration Exceeds Plugged Duration,1,0.0014,"Unexplained logging discrepancy requiring investigation (1 record(s), Transaction ID(s): 132725)"
+ChargingDuration Exceeds Plugged Duration,1,0.0014,"Unexplained logging discrepancy requiring investigation (1 record, Transaction ID: 132725)"
 Missing Hot_Unplug,19839,27.8387,Sessions without unplug status classification
 Trial 1 Sessions,28107,39.4407,Managed charging Trial 1
 Trial 2 Sessions,13000,18.242,Managed charging Trial 2

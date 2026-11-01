@@ -24,8 +24,8 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Data Quality Invariants**: 0 negative timestamp intervals (`StopTime < StartTime`), 0 duplicate primary keys (`TransactionID`), and 0 full-row duplicates.
 - **Unattributed Sessions**: 3,899 records (5.4712%) lack `ParticipantID`. Natural-session matching confirms 3,774 records match known participant sessions on the four session fields (`ChargerID, StartTime, StopTime, ConsumedkWh`), while 125 records belong to an unregistered charger (4441003917).
 - **Participant Session Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering 27 nested overlaps missed by sequential shift checks).
-- **Energy Quality**: 20 records exceed the official Electric Nation 100 kWh implausibility threshold (12 exceed 150 kWh, reaching 37,487.88 kWh), and 1,788 records exceed their vehicle's rated battery capacity. Exactly 1 record has missing energy.
-- **Charging Duration Discrepancy**: 1 record(s) (Transaction ID(s): 132725) exhibit `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
+- **Energy Quality**: 20 records exceed the official Electric Nation 100 kWh implausibility threshold (12 exceed 150 kWh, reaching 37,487.88 kWh), and 1,788 records exceed their vehicle's rated battery capacity. 1 record lacks a meter reading.
+- **Charging Duration Discrepancy**: 1 record (Transaction ID: 132725) exhibits `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
 - **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **267 participants** and **59,494 sessions**.
 
 ---
@@ -52,7 +52,7 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
-- Parsing success rate for non-missing raw timestamps is 100.0% (0 parse failure(s) across 142528 non-missing timestamp cells; 0 missing cell(s)).
+- Parsing success rate for non-missing raw timestamps is 100.0% (0 parse failures across 142528 non-missing timestamp cells; 0 missing cells).
 
 | Timestamp Metric | Start Time (`StartTime`) | Stop Time (`StopTime`) |
 | :--- | :--- | :--- |
@@ -61,7 +61,7 @@ Raw timestamps in Electric Nation are supplied in UTC. The audit implements the 
 | Earliest Value | `2017-03-01 19:55:00+00:00` | `2017-03-02 07:11:00+00:00` |
 | Latest Value | `2018-12-31 23:11:00+00:00` | `2019-01-01 21:52:00+00:00` |
 | Parse Failures | 0 | 0 |
-| Missing Timestamps | 0 | 0 |
+| Missing Raw Values | 0 | 0 |
 | Negative Intervals (`StopTime < StartTime`) | 0 (0.0%) | — |
 | Zero Duration (`StopTime == StartTime`) | 92 (0.1291%) | — |
 
@@ -117,7 +117,7 @@ Energy consumption readings (`ConsumedkWh`) were evaluated against physical thre
 
 | Metric | Record Count | % of Transactions | Assessment |
 | :--- | :--- | :--- | :--- |
-| Missing Energy | 1 | 0.0014% | Confirmed invalid (1 record lacks meter reading) |
+| Missing Energy | 1 | 0.0014% | 1 record lacks a meter reading |
 | Non-Positive Energy (`<= 0`) | 0 | 0.0000% | No non-positive readings found (all recorded values are positive, min 0.01 kWh) |
 | Energy > 100 kWh | 20 | 0.0281% | Exceeds official Electric Nation plausibility threshold |
 | Energy > 150 kWh | 12 | 0.0168% | Severe outliers reaching 37,487.88 kWh |
@@ -142,7 +142,7 @@ The planned modeling population screening was executed in strict order:
 
 ### Screening Transition Details
 - **Step 5 (Overlap Removal)**: Yields 299 participants and 60,575 sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant after overlap removal). 1 participant(s) had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant after overlap removal). 1 participant had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
 - **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **11 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,220 sessions) pass the minimum-history threshold.
 - **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,494 sessions**.
 

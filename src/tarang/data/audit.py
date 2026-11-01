@@ -210,6 +210,8 @@ def parse_utc_timestamps(
             "total_records": total_records,
             "missing_start": total_records,
             "missing_stop": total_records,
+            "raw_missing_start": total_records,
+            "raw_missing_stop": total_records,
             "start_parse_failures": 0,
             "stop_parse_failures": 0,
             "earliest_start": None,
@@ -489,7 +491,7 @@ def audit_metadata_row_level(
         charger_mismatches = int((c_tx_str != c_meta_str).sum())
         charger_matches = int((c_tx_str == c_meta_str).sum())
 
-        tx_valid_p = df_tx[df_tx["ParticipantID"].notna()]
+        tx_valid_p = df_tx[df_tx["ParticipantID"].isin(common_pids)]
         if "CarKW" in tx_valid_p.columns:
             kw_counts = tx_valid_p.groupby("ParticipantID")["CarKW"].nunique()
             inconsistent_kw_pids = set(kw_counts[kw_counts > 1].index)
@@ -664,12 +666,17 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
             "initial_participants": 0,
             "trial_3_excluded": 0,
             "remaining_after_t3": 0,
+            "participants_after_t3": 0,
             "short_sessions_excluded": 0,
             "remaining_after_short": 0,
+            "participants_after_short": 0,
             "screened_overlaps": 0,
             "remaining_after_overlaps": 0,
+            "participants_after_overlaps": 0,
             "dropped_first_sessions": 0,
             "retained_sessions_total": 0,
+            "participants_after_dropped_first": 0,
+            "participants_zero_retained_after_dropped_first": 0,
             "participants_lt_10_retained": 0,
             "sessions_in_lt_10_retained": 0,
             "participants_before_density": 0,
@@ -1051,6 +1058,16 @@ def generate_transaction_quality_summary(
 
     discrepant_count = ch_discrepancy_info["count"]
     discrepant_ids = ", ".join(map(str, ch_discrepancy_info["ids"])) if ch_discrepancy_info["ids"] else "None"
+    if discrepant_count == 0:
+        ch_discrepancy_desc = "No unexplained logging discrepancies detected (0 records)"
+    elif discrepant_count == 1:
+        ch_discrepancy_desc = f"Unexplained logging discrepancy requiring investigation (1 record, Transaction ID: {discrepant_ids})"
+    else:
+        ch_discrepancy_desc = f"Unexplained logging discrepancies requiring investigation ({discrepant_count} records, Transaction IDs: {discrepant_ids})"
+
+    missing_rec_cnt = energy_metrics.get("missing_energy", 0)
+    missing_rec_desc = f"{missing_rec_cnt} record" if missing_rec_cnt == 1 else f"{missing_rec_cnt} records"
+
     unknown_ids = unattributed_metrics.get("unknown_charger_ids", [])
     unknown_chargers_str = ", ".join(map(str, unknown_ids)) if unknown_ids else "None"
     max_energy_val = energy_metrics.get("max_energy", 0.0)
@@ -1075,7 +1092,7 @@ def generate_transaction_quality_summary(
         ("Unique Charger Identifiers", unique_chargers, charger_pct, "Unique physical chargers"),
         ("Missing ParticipantID", unattributed_metrics["total_unattributed_records"], unattributed_metrics["unattributed_percentage"], f"Unattributed sessions ({unattributed_metrics['matched_4field_session_records']} records match known participant sessions on the four session fields; other transaction fields may differ; {unattributed_metrics['unknown_charger_records']} belong to unregistered charger {unknown_chargers_str})"),
         ("Missing CarKW / CarKWh", int(df_tx["CarKW"].isnull().sum()) if "CarKW" in df_tx.columns else 0, round(int(df_tx["CarKW"].isnull().sum()) / total * 100.0, 4) if total > 0 else 0.0, "Vehicle specification missingness in transactions"),
-        ("Missing ConsumedkWh", energy_metrics["missing_energy"], energy_metrics["missing_energy_pct"], f"Records with missing metered electrical energy ({energy_metrics['missing_energy']} record(s))"),
+        ("Missing ConsumedkWh", energy_metrics["missing_energy"], energy_metrics["missing_energy_pct"], f"Records with missing metered electrical energy ({missing_rec_desc})"),
         ("ConsumedkWh <= 0", energy_metrics["non_positive_energy"], energy_metrics["non_positive_energy_pct"], "Zero or negative energy readings"),
         ("ConsumedkWh > 100 kWh (Implausible Threshold)", energy_metrics["energy_gt_100kwh"], energy_metrics["energy_gt_100kwh_pct"], "Official Electric Nation implausible consumption threshold"),
         ("ConsumedkWh > 150 kWh (Extreme Outliers)", energy_metrics["energy_gt_150kwh"], energy_metrics["energy_gt_150kwh_pct"], f"Extreme energy consumption outliers reaching {max_energy_val:,.2f} kWh"),
@@ -1085,7 +1102,7 @@ def generate_transaction_quality_summary(
         ("Sessions Shorter than 5 Minutes (< 5 min)", sessions_lt_5m, round(sessions_lt_5m / total * 100.0, 4) if total > 0 else 0.0, "Micro-sessions excluded from modeling population"),
         ("Sessions Longer than 336 Hours (> 14 days)", sessions_gt_336h, round(sessions_gt_336h / total * 100.0, 4) if total > 0 else 0.0, "Unclosed sessions capped at 336 hours for target"),
         ("Missing ChargingDuration", int(ch_dur.isnull().sum()), round(int(ch_dur.isnull().sum()) / total * 100.0, 4) if total > 0 else 0.0, "Unmonitored active power intervals"),
-        ("ChargingDuration Exceeds Plugged Duration", discrepant_count, round(discrepant_count / total * 100.0, 4) if total > 0 else 0.0, f"Unexplained logging discrepancy requiring investigation ({discrepant_count} record(s), Transaction ID(s): {discrepant_ids})"),
+        ("ChargingDuration Exceeds Plugged Duration", discrepant_count, round(discrepant_count / total * 100.0, 4) if total > 0 else 0.0, ch_discrepancy_desc),
         ("Missing Hot_Unplug", int(df_tx["Hot_Unplug"].isnull().sum()) if "Hot_Unplug" in df_tx.columns else 0, round(int(df_tx["Hot_Unplug"].isnull().sum()) / total * 100.0, 4) if total > 0 else 0.0, "Sessions without unplug status classification"),
         ("Trial 1 Sessions", t1_count, round(t1_count / total * 100.0, 4) if total > 0 else 0.0, "Managed charging Trial 1"),
         ("Trial 2 Sessions", t2_count, round(t2_count / total * 100.0, 4) if total > 0 else 0.0, "Managed charging Trial 2"),
@@ -1192,11 +1209,14 @@ def generate_participant_reconciliation(
     charger_mismatches = row_meta_metrics.get("row_level_charger_mismatches", 0)
     charger_mismatch_pct = row_meta_metrics.get("row_level_charger_mismatch_pct", 0.0)
 
+    tx_only_str = f"{tx_only} transaction participant" if tx_only == 1 else f"{tx_only} transaction participants"
+    inconsistent_pids_str = f"{inconsistent_pids} participant" if inconsistent_pids == 1 else f"{inconsistent_pids} participants"
+
     records = [
         {"metric": "Unique Participants in Transactions (Non-null)", "count": total_tx_pids, "percentage": 100.0 if total_tx_pids else 0.0, "notes": "Distinct participant IDs appearing in transaction records"},
         {"metric": "Unique Participants in Metadata", "count": total_meta_pids, "percentage": 100.0 if total_meta_pids else 0.0, "notes": "Total installed charger participants in metadata"},
         {"metric": "Matched Participants (Present in Both)", "count": matched_pids, "percentage": matched_pct, "notes": f"{matched_pct:.1f}% of transaction participants are identified in metadata ({matched_pids}/{total_tx_pids})"},
-        {"metric": "Transaction Participants Missing from Metadata", "count": tx_only, "percentage": tx_only_pct, "notes": f"{tx_only} transaction participant(s) not found in metadata registry"},
+        {"metric": "Transaction Participants Missing from Metadata", "count": tx_only, "percentage": tx_only_pct, "notes": f"{tx_only_str} not found in metadata registry"},
         {"metric": "Metadata Participants Missing from Transactions", "count": meta_only, "percentage": meta_only_pct, "notes": f"Metadata records without transactions ({greenflux_unmatched} GreenFlux, {crowdcharge_unmatched} Crowd Charge)"},
         {"metric": "Matched Participants - Crowd Charge Provider", "count": crowdcharge_matched, "percentage": round(crowdcharge_matched / matched_pids * 100.0, 2) if matched_pids else 0.0, "notes": "Matched participants belonging to Crowd Charge provider"},
         {"metric": "Matched Participants - GreenFlux Provider", "count": greenflux_matched, "percentage": round(greenflux_matched / matched_pids * 100.0, 2) if matched_pids else 0.0, "notes": "Matched participants belonging to GreenFlux provider"},
@@ -1204,7 +1224,7 @@ def generate_participant_reconciliation(
         {"metric": "Unmatched Metadata - Crowd Charge Provider", "count": crowdcharge_unmatched, "percentage": round(crowdcharge_unmatched / meta_only * 100.0, 2) if meta_only else 0.0, "notes": "Crowd Charge installations with zero recorded sessions in this file"},
         {"metric": "Row-Level CarKW Mismatches Across Matched Sessions", "count": carkw_mismatches, "percentage": carkw_mismatch_pct, "notes": f"{100.0 - carkw_mismatch_pct:.2f}% agreement across matched transaction rows ({carkw_mismatches} mismatches)"},
         {"metric": "Row-Level CarKWh Mismatches Across Matched Sessions", "count": carkwh_mismatches, "percentage": carkwh_mismatch_pct, "notes": f"{100.0 - carkwh_mismatch_pct:.2f}% agreement across matched transaction rows ({carkwh_mismatches} mismatches)"},
-        {"metric": "Participants with Inconsistent Specifications Across Sessions", "count": inconsistent_pids, "percentage": inconsistent_pct, "notes": f"{inconsistent_pids} participant(s) with fluctuating CarKW or CarKWh across sessions"},
+        {"metric": "Participants with Inconsistent Specifications Across Sessions", "count": inconsistent_pids, "percentage": inconsistent_pct, "notes": f"{inconsistent_pids_str} with fluctuating CarKW or CarKWh across sessions"},
         {"metric": "Row-Level ChargerID vs Charger Mismatches", "count": charger_mismatches, "percentage": charger_mismatch_pct, "notes": f"{100.0 - charger_mismatch_pct:.2f}% agreement when string formats are compared ({charger_mismatches} mismatches)"},
         {"metric": "Unattributed Sessions Matching Known Sessions on 4 Fields", "count": unattributed_metrics["matched_4field_session_records"], "percentage": round(unattributed_metrics["matched_4field_session_records"] / total_tx * 100.0, 2) if total_tx else 0.0, "notes": "These records match known participant sessions on ChargerID, StartTime, StopTime, ConsumedkWh; other transaction fields may differ"},
         {"metric": "Unattributed Sessions on Unregistered Charger", "count": unattributed_metrics["unknown_charger_records"], "percentage": round(unattributed_metrics["unknown_charger_records"] / total_tx * 100.0, 2) if total_tx else 0.0, "notes": f"Records associated with unregistered charger {unknown_chargers_str} absent from metadata"},
@@ -1256,6 +1276,13 @@ def generate_markdown_report(
     nested_overlap_diff = overlap_count - simple_overlap_count
     discrepant_count = ch_discrepancy_info["count"]
     discrepant_ids = ", ".join(map(str, ch_discrepancy_info["ids"])) if ch_discrepancy_info["ids"] else "None"
+    if discrepant_count == 0:
+        ch_discrepancy_summary = "No records exhibit `ChargingDuration` exceeding plugged-in connection duration."
+    elif discrepant_count == 1:
+        ch_discrepancy_summary = f"1 record (Transaction ID: {discrepant_ids}) exhibits `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation."
+    else:
+        ch_discrepancy_summary = f"{discrepant_count} records (Transaction IDs: {discrepant_ids}) exhibit `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation."
+
     unknown_ids = unattributed_metrics.get("unknown_charger_ids", [])
     unknown_chargers_str = ", ".join(map(str, unknown_ids)) if unknown_ids else "None"
     max_energy_val = energy_metrics.get("max_energy", 0.0)
@@ -1304,6 +1331,8 @@ def generate_markdown_report(
         parse_success_str = f"{parse_success_pct:.1f}%"
     else:
         parse_success_str = "N/A"
+    parse_fail_str = f"{total_parse_failures} parse failure" if total_parse_failures == 1 else f"{total_parse_failures} parse failures"
+    missing_cells_str = f"{total_raw_missing} missing cell" if total_raw_missing == 1 else f"{total_raw_missing} missing cells"
     neg_intervals = ts_metrics.get("negative_intervals", 0)
 
     non_pos_energy = energy_metrics.get("non_positive_energy", 0)
@@ -1313,16 +1342,21 @@ def generate_markdown_report(
             non_pos_assessment = f"No non-positive readings found (all recorded values are positive, min {min_pos_energy:,.2f} kWh)"
         else:
             non_pos_assessment = "No non-positive readings found (all recorded values are positive)"
+    elif non_pos_energy == 1:
+        non_pos_assessment = "1 non-positive energy reading detected (<= 0 kWh)"
     else:
-        non_pos_assessment = f"{non_pos_energy} non-positive energy reading(s) detected (<= 0 kWh)"
+        non_pos_assessment = f"{non_pos_energy} non-positive energy readings detected (<= 0 kWh)"
 
     missing_energy_cnt = energy_metrics.get("missing_energy", 0)
     if missing_energy_cnt == 0:
-        missing_energy_assessment = "No missing energy readings found (all records contain metered energy)"
+        missing_energy_assessment = "No missing energy readings found"
     elif missing_energy_cnt == 1:
-        missing_energy_assessment = "Confirmed invalid (1 record lacks meter reading)"
+        missing_energy_assessment = "1 record lacks a meter reading"
     else:
-        missing_energy_assessment = f"Confirmed invalid ({missing_energy_cnt} records lack meter reading)"
+        missing_energy_assessment = f"{missing_energy_cnt} records lack meter readings"
+
+    tx_only_spec_str = f"{tx_only_pids} unknown participant ID" if tx_only_pids == 1 else f"{tx_only_pids} unknown participant IDs"
+    inconsistent_pids_spec_str = f"{inconsistent_pids} participant with fluctuating specs" if inconsistent_pids == 1 else f"{inconsistent_pids} participants with fluctuating specs"
 
     scr_initial_pids = screening_metrics["initial_participants"]
     scr_initial_records = screening_metrics["initial_valid_records"]
@@ -1338,6 +1372,7 @@ def generate_markdown_report(
         "participants_zero_retained_after_dropped_first",
         scr_pids_after_overlaps - scr_pids_after_dropped_first,
     )
+    scr_zero_pids_str = f"{scr_pids_zero_retained} participant had" if scr_pids_zero_retained == 1 else f"{scr_pids_zero_retained} participants had"
     scr_retained_sessions = screening_metrics["retained_sessions_total"]
     scr_pids_lt_10 = screening_metrics["participants_lt_10_retained"]
     scr_sessions_lt_10 = screening_metrics["sessions_in_lt_10_retained"]
@@ -1374,8 +1409,8 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Data Quality Invariants**: {neg_intervals} negative timestamp intervals (`StopTime < StartTime`), {dup_tx_ids} duplicate primary keys (`TransactionID`), and {dup_tx_rows} full-row duplicates.
 - **Unattributed Sessions**: {unattributed_metrics['total_unattributed_records']:,} records ({unattributed_metrics['unattributed_percentage']}%) lack `ParticipantID`. Natural-session matching confirms {unattributed_metrics['matched_4field_session_records']:,} records match known participant sessions on the four session fields (`ChargerID, StartTime, StopTime, ConsumedkWh`), while {unattributed_metrics['unknown_charger_records']} records belong to an unregistered charger ({unknown_chargers_str}).
 - **Participant Session Overlaps**: {overlap_count:,} overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering {nested_overlap_diff} nested overlaps missed by sequential shift checks).
-- **Energy Quality**: {energy_metrics['energy_gt_100kwh']} records exceed the official Electric Nation 100 kWh implausibility threshold ({energy_metrics['energy_gt_150kwh']} exceed 150 kWh, reaching {max_energy_val:,.2f} kWh), and {energy_metrics['energy_exceeds_carkwh']:,} records exceed their vehicle's rated battery capacity. Exactly {energy_metrics['missing_energy']} record has missing energy.
-- **Charging Duration Discrepancy**: {discrepant_count} record(s) (Transaction ID(s): {discrepant_ids}) exhibit `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
+- **Energy Quality**: {energy_metrics['energy_gt_100kwh']} records exceed the official Electric Nation 100 kWh implausibility threshold ({energy_metrics['energy_gt_150kwh']} exceed 150 kWh, reaching {max_energy_val:,.2f} kWh), and {energy_metrics['energy_exceeds_carkwh']:,} records exceed their vehicle's rated battery capacity. {missing_energy_assessment}.
+- **Charging Duration Discrepancy**: {ch_discrepancy_summary}
 - **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **{scr_final_pids} participants** and **{scr_final_sessions:,} sessions**.
 
 ---
@@ -1402,7 +1437,7 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
-- Parsing success rate for non-missing raw timestamps is {parse_success_str} ({total_parse_failures} parse failure(s) across {total_non_missing} non-missing timestamp cells; {total_raw_missing} missing cell(s)).
+- Parsing success rate for non-missing raw timestamps is {parse_success_str} ({parse_fail_str} across {total_non_missing} non-missing timestamp cells; {missing_cells_str}).
 
 | Timestamp Metric | Start Time (`StartTime`) | Stop Time (`StopTime`) |
 | :--- | :--- | :--- |
@@ -1410,8 +1445,8 @@ Raw timestamps in Electric Nation are supplied in UTC. The audit implements the 
 | Timezone | UTC (UTC-aware) | UTC (UTC-aware) |
 | Earliest Value | `{ts_metrics['earliest_start']}` | `{ts_metrics['earliest_stop']}` |
 | Latest Value | `{ts_metrics['latest_start']}` | `{ts_metrics['latest_stop']}` |
-| Parse Failures | {ts_metrics['start_parse_failures']} | {ts_metrics['stop_parse_failures']} |
-| Missing Timestamps | {ts_metrics['missing_start']} | {ts_metrics['missing_stop']} |
+| Parse Failures | {ts_metrics.get('start_parse_failures', 0)} | {ts_metrics.get('stop_parse_failures', 0)} |
+| Missing Raw Values | {raw_missing_start} | {raw_missing_stop} |
 | Negative Intervals (`StopTime < StartTime`) | {ts_metrics['negative_intervals']} ({ts_metrics['negative_intervals_pct']}%) | — |
 | Zero Duration (`StopTime == StartTime`) | {ts_metrics['zero_intervals']} ({ts_metrics['zero_intervals_pct']}%) | — |
 
@@ -1437,7 +1472,7 @@ The session overlap check was implemented using the cumulative maximum stop time
 $$\\text{{Overlap Condition: }} \\text{{StartTime}}_i < \\max_{{j < i}} (\\text{{StopTime}}_j)$$
 
 - **Simple Shift(1) Overlaps**: {simple_overlap_count} sessions detected when comparing only to the immediately preceding session.
-- **Cumulative Max Earlier Overlaps**: **{overlap_count:,} sessions** detected ({round(overlap_count / total_tx * 100.0, 4)}% of transactions).
+- **Cumulative Max Earlier Overlaps**: **{overlap_count:,} sessions** detected ({round(overlap_count / total_tx * 100.0, 4) if total_tx > 0 else 0.0}% of transactions).
 - **Nested Overlaps Identified**: Exactly {nested_overlap_diff} nested overlapping sessions were uncovered where a session started after the immediately prior short session ended but before an earlier long session concluded.
 - Boundary sessions starting exactly when an earlier session ended (`StartTime == max(StopTime)`) are correctly treated as non-overlapping.
 
@@ -1452,11 +1487,11 @@ A row-level reconciliation was performed across all {total_matched_rows:,} match
 | Unique Participants in Transactions | {total_tx_pids} | 100.00% | Non-null participant IDs |
 | Unique Participants in Metadata | {meta_pids} | 100.00% | Total trial participants across DCS providers |
 | Matched Participants (Both Datasets) | {matched_pids} | {matched_pct:.2f}% | {matched_pct:.1f}% of transaction participants match |
-| Unmatched Transaction Participants | {tx_only_pids} | {tx_only_pct:.2f}% | {tx_only_pids} unknown participant IDs |
+| Unmatched Transaction Participants | {tx_only_pids} | {tx_only_pct:.2f}% | {tx_only_spec_str} |
 | Unmatched Metadata Participants | {meta_only_pids} | {meta_only_pct:.2f}% | Metadata records without transactions |
 | Row-Level `CarKW` Mismatches | {carkw_mismatches} | {carkw_mismatch_pct:.4f}% | {carkw_agree_pct:.2f}% agreement across all matched rows |
 | Row-Level `CarKWh` Mismatches | {carkwh_mismatches} | {carkwh_mismatch_pct:.4f}% | {carkwh_agree_pct:.2f}% agreement across all matched rows |
-| Inconsistent Vehicle Specs per Participant | {inconsistent_pids} | {inconsistent_pct:.2f}% | {inconsistent_pids} participants with fluctuating specs |
+| Inconsistent Vehicle Specs per Participant | {inconsistent_pids} | {inconsistent_pct:.2f}% | {inconsistent_pids_spec_str} |
 | Row-Level `ChargerID` vs `Charger` Matches | {charger_matches:,} | {charger_match_pct:.2f}% | Formats match when compared as strings |
 
 ---
@@ -1492,7 +1527,7 @@ The planned modeling population screening was executed in strict order:
 
 ### Screening Transition Details
 - **Step 5 (Overlap Removal)**: Yields {scr_pids_after_overlaps} participants and {scr_records_after_overlaps:,} sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes {scr_dropped_first} sessions (one first session per participant after overlap removal). {scr_pids_zero_retained} participant(s) had only a single session, leaving 0 retained sessions. This leaves **{scr_pids_after_dropped_first} participants** with at least 1 retained session, totaling **{scr_retained_sessions:,} retained sessions**.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes {scr_dropped_first} sessions (one first session per participant after overlap removal). {scr_zero_pids_str} only a single session, leaving 0 retained sessions. This leaves **{scr_pids_after_dropped_first} participants** with at least 1 retained session, totaling **{scr_retained_sessions:,} retained sessions**.
 - **Step 7 (Minimum History Filter)**: Of these {scr_pids_after_dropped_first} participants, exactly **{scr_pids_lt_10} participants** have fewer than 10 retained sessions (accounting for {scr_sessions_lt_10} sessions). The remaining **{scr_pids_before_density} participants** ({scr_sessions_before_density:,} sessions) pass the minimum-history threshold.
 - **Step 8 (Observation-Density Filter)**: Excludes {scr_pids_excluded_density} participants ({scr_sessions_excluded_density:,} sessions) whose retained session count is below $\\text{{observation\\_days}} / 7$, yielding the final population of **{scr_final_pids} participants** and **{scr_final_sessions:,} sessions**.
 
