@@ -1,0 +1,63 @@
+# TARANG — Data Dictionary
+
+This document details the source columns, observed data types, units of measurement, and domain definitions across both raw datasets in the TARANG project:
+1. `CrowdCharge Transactions.xlsx` (`Transaction Data` sheet)
+2. `ChargerInstall.xlsx` (`20181126_ChargerInstall_DriveEl` sheet)
+
+Definitions reflect empirical observations and the official Electric Nation project documentation. Undocumented or fabricated definitions are strictly excluded.
+
+---
+
+## 1. Transaction Dataset (`Transaction Data`)
+
+Primary transaction records representing individual EV connection and charging sessions.
+
+| Column Name | Observed Type | Unit | Description | Observed Domain / Values |
+| :--- | :--- | :--- | :--- | :--- |
+| `TransactionID` | `int64` | Dimensionless | Unique sequential identifier assigned to each charging session. | Integer from 100000 to 204409. Globally unique. |
+| `ChargerID` | `int64` | Dimensionless | Hardware identifier for the smart EV charging station. | 301 distinct identifiers (e.g., 35000117, 568004118). |
+| `ParticipantID` | `object` (`str`) | Dimensionless | Anonymized unique trial participant identifier. | Format `ENxxxx` (e.g., EN1001 to EN1954). 300 distinct IDs; 3,899 null values. |
+| `CarKW` | `float64` | Kilowatts (kW) | Maximum charging power acceptance rate of the vehicle's onboard charger. | Discrete values: `3.6` (16A single phase) or `7.0` (32A single phase). 3,899 null values. |
+| `CarKWh` | `float64` | Kilowatt-hours (kWh) | Usable battery capacity of the participant's vehicle. | Continuous values ranging from `6.2` to `100.0`. 3,899 null values. |
+| `StartTime` | `datetime64[us]` | ISO 8601 Timestamp | Timestamp when the vehicle was physically plugged into the charger. | `2017-03-01 19:55:00` to `2018-12-31 23:11:00`. Naive local wall-clock time. |
+| `StopTime` | `datetime64[us]` | ISO 8601 Timestamp | Timestamp when the vehicle was unplugged or the connection was terminated. | `2017-03-02 07:11:00` to `2019-01-01 21:52:00`. Naive local wall-clock time. |
+| `GroupID` | `float64` | Dimensionless | Electrical substation feeder network group identifier for demand management. | Numeric cluster ID (e.g., 1.0, 2.0). 24,034 nulls for unmanaged participants. |
+| `Trial` | `float64` | Dimensionless | Electric Nation smart charging trial phase indicator. | `1.0` (Trial 1: 28,107), `2.0` (Trial 2: 13,000), `3.0` (Trial 3: 6,123), or `NaN` (Control: 24,034). |
+| `AdjustedStartTime` | `datetime64[us]` | ISO 8601 Timestamp | Session start timestamp adjusted for network latency or clock alignment. | Identical to `StartTime` in this dataset. |
+| `AdjustedStopTime` | `datetime64[us]` | ISO 8601 Timestamp | Session stop timestamp adjusted for network latency or clock alignment. | Identical to `StopTime` in this dataset. |
+| `PluggedInTime` | `int64` | Minutes | Total elapsed connection duration between `StartTime` and `StopTime`. | Integer ranging from `0` to `470693`. Median: 682 minutes. |
+| `ConsumedkWh` | `float64` | Kilowatt-hours (kWh) | Total electrical energy metered and supplied to the vehicle battery during the session. | Ranging from `0.01` to `37487.88`. Median: 7.06 kWh. Exactly 1 null value. |
+| `Part_of_Managed_Group` | `object` (`str`) | Categorical | Indicates whether the participant was assigned to an active smart management trial group. | `'Yes'` (47,230 sessions) or `'No'` (24,034 sessions). |
+| `Weekday_or_Weekend` | `object` (`str`) | Categorical | Day-of-week classification based on `StartTime`. | `'Weekday'` (51,770 sessions) or `'Weekend'` (19,494 sessions). |
+| `ActiveCharging_Start` | `float64` | Minutes / Offset | Time offset or elapsed minutes from plug-in until electrical power transfer commenced. | Non-negative numeric; 19,707 null values (27.65%). |
+| `Max_Current_Drawn_for_T`| `float64` | Amperes (A) | Maximum electrical current drawn by the vehicle during the transaction. | Observed values from `0.0` to `32.0`. 35,520 null values (49.84%). |
+| `EndCharge` | `float64` | Minutes / Offset | Time offset or elapsed minutes from plug-in until active battery charging ceased. | Non-negative numeric; 20,855 null values (29.26%). |
+| `ChargingDuration` | `float64` | Minutes | Net active duration during which electrical current was flowing into the battery. | Ranging from `1.0` to `19570.0`. Median: 108 minutes. 20,861 null values (29.27%). |
+| `t_inactive_start` | `float64` | Minutes | Idle duration between plug-in connection and active charging onset. | Non-negative numeric; 19,707 null values (27.65%). |
+| `t_inactive_end` | `float64` | Minutes | Idle duration between charging completion and physical unplugging. | Non-negative numeric; 20,855 null values (29.26%). |
+| `Used_a_Timer` | `float64` | Binary flag | Indicator of whether an in-vehicle or charger delay timer was utilized. | `0.0` (timer not detected) or `1.0` (timer used). 19,707 null values. |
+| `Began_in_weekday_evening_peak` | `float64` | Binary flag | Indicator of whether the session started during peak weekday evening demand hours (17:00–21:00). | `0.0` or `1.0`. 19,707 null values (27.65%). |
+| `Hot_Unplug` | `object` (`str`) | Categorical | Disconnection status indicating whether the vehicle was unplugged while active power was flowing. | `'No'` (41,209), `'Yes'` (9,080), `'May be departure timer'` (1,136), or `NaN` (19,839). |
+| `T1_Managed` | `float64` | Binary flag | Indicator of smart demand management intervention in Trial 1. | `0.0` or `1.0`. Populated only for Trial 1 participants (43,157 nulls). |
+| `T2_Managed` | `float64` | Binary flag | Indicator of smart demand management intervention in Trial 2. | `0.0` or `1.0`. Populated only for Trial 2 participants (58,266 nulls). |
+| `Restricton T1` | `float64` | Binary flag | Indicator of active power curtailment during Trial 1. | `0.0` or `1.0`. 69,190 nulls (97.09%). |
+| `Restriction T2` | `float64` | Binary flag | Indicator of active power curtailment during Trial 2. | `0.0` or `1.0`. 70,789 nulls (99.33%). |
+
+---
+
+## 2. Vehicle Metadata Dataset (`20181126_ChargerInstall_DriveEl`)
+
+Hardware installation and vehicle registry records for participants in the Electric Nation trials.
+
+| Column Name | Observed Type | Unit | Description | Observed Domain / Values |
+| :--- | :--- | :--- | :--- | :--- |
+| `ParticipantID` | `object` (`str`) | Dimensionless | Unique participant identifier linking metadata to transaction logs. | Format `ENxxxx` (e.g., EN1001 to EN1954). 673 unique values, 0 nulls. |
+| `Charger` | `object` | Dimensionless | Serial number or hardware identifier of the installed charging unit. | 673 unique values (e.g., 568004118). 0 nulls. |
+| `ChargerInstallDate`| `datetime64[us]` | ISO 8601 Date | Date when the domestic smart charger was installed at the participant's premises. | `2016-10-18` to `2018-04-13`. 0 nulls. |
+| `DCSProvider` | `object` (`str`) | Categorical | Demand Control System (DCS) service provider operating the charger network. | `'Greenflux'` (345 installations) or `'Crowd Charge'` (328 installations). 0 nulls. |
+| `CarInstallDate` | `datetime64[us]` | ISO 8601 Date | Date when the participant received delivery of the trial plug-in vehicle. | `2016-09-02` to `2018-05-30`. 104 null values (15.45%). |
+| `CarMake` | `object` (`str`) | Categorical | Brand manufacturer of the plug-in vehicle. | 18 manufacturers (e.g., BMW, Tesla, Nissan, Volkswagen, Mitsubishi). 0 nulls. |
+| `CarModel` | `object` (`str`) | Categorical | Commercial vehicle model designation. | 45 models (e.g., Model S, Leaf, i3 REX, Outlander PHEV, 330e, Golf GTE). 0 nulls. |
+| `PIVType` | `object` (`str`) | Categorical | Plug-in Vehicle (PIV) powertrain technology architecture. | `'Electric only (BEV)'` (315), `'Plug in Hybrid Electric Vehicle (PHEV)'` (271), `'Range extender (REX)'` (86), or `'plug in Hybrid Electric Vehicle (PHEV)'` (1). 0 nulls. |
+| `CarkW` | `float64` | Kilowatts (kW) | On-board charger maximum power rating. | `3.6` (318 vehicles) or `7.0` (355 vehicles). 0 nulls. |
+| `CarkWh` | `float64` | Kilowatt-hours (kWh) | Usable battery pack capacity. | Numeric values from `4.4` to `100.0`. Median: 24.0 kWh. 0 nulls. |

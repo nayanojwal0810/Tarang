@@ -1,0 +1,24 @@
+check_name,record_count,percentage,description
+Total Records,673,100.0,Total installation records in sheet 20181126_ChargerInstall_DriveEl
+Unique Participant IDs,673,100.0,All 673 ParticipantID values are distinct
+Duplicate Participant IDs,0,0.0,Zero duplicate ParticipantIDs
+Duplicate Complete Rows,0,0.0,Zero duplicate rows
+Missing ParticipantID,0,0.0,ParticipantID is 100% populated
+Missing Charger ID,0,0.0,Charger ID is 100% populated
+Missing ChargerInstallDate,0,0.0,Charger install dates 100% populated
+Missing DCSProvider,0,0.0,Charging management provider 100% populated
+Missing CarInstallDate,104,15.4532,104 records lack vehicle installation date
+Missing CarMake,0,0.0,Vehicle manufacturer 100% populated
+Missing CarModel,0,0.0,Vehicle model 100% populated
+Missing PIVType,0,0.0,Plug-in vehicle powertrain classification 100% populated
+Missing CarkW,0,0.0,Charging power rating 100% populated
+Missing CarkWh,0,0.0,Battery usable capacity 100% populated
+Greenflux Provider Count,345,51.263,345 GreenFlux trial participants
+Crowd Charge Provider Count,328,48.737,328 Crowd Charge trial participants
+Electric only (BEV) Vehicles,315,46.8053,315 Battery Electric Vehicles
+Plug-in Hybrid (PHEV) Vehicles,272,40.416,272 PHEV vehicles (including 1 with lowercase 'p')
+Range Extender (REX) Vehicles,86,12.7786,86 Range Extender vehicles (e.g. BMW i3 REX)
+CarkW == 3.6 kW,318,47.2511,318 single-phase 16A chargers
+CarkW == 7.0 kW,355,52.7489,355 single-phase 32A chargers
+Unique Car Manufacturers,18,2.6746,18 distinct car makes represented
+Unique Car Models,45,6.6865,45 distinct vehicle models represented

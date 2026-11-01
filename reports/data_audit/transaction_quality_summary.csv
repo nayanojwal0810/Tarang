@@ -1,0 +1,24 @@
+check_name,record_count,percentage,description
+Total Transaction Records,71264,100.0,Total rows in Transaction Data sheet
+Unique Transaction Identifiers,71264,100.0,All TransactionID values are distinct
+Duplicate Transaction IDs,0,0.0,Zero duplicate TransactionID values
+Duplicate Complete Rows,0,0.0,Zero full row duplicates
+Unique Participant Identifiers,300,0.421,300 unique non-null participants
+Unique Charger Identifiers,301,0.4224,301 unique physical chargers
+Missing ParticipantID,3899,5.4712,"3,899 unattributed sessions (200,000 series IDs)"
+Missing CarKW / CarKWh,3899,5.4712,Exactly matches missing ParticipantID rows
+Missing ConsumedkWh,1,0.0014,Single record with missing metered energy
+ConsumedkWh <= 0,0,0.0,All non-null energy values are positive (min 0.01 kWh)
+ConsumedkWh Extreme Outliers (> 150 kWh),12,0.0168,12 records exceed realistic vehicle battery capacity
+StopTime < StartTime,0,0.0,Zero negative duration intervals
+StopTime == StartTime (Zero Duration),92,0.1291,92 sessions have identical start and stop times
+Sessions Shorter than 5 Minutes (< 5 min),561,0.7872,561 micro-sessions (includes 92 zero-duration)
+Sessions Longer than 336 Hours (> 14 days),23,0.0323,"23 extreme long sessions reaching up to 7,844.88 hrs"
+Missing ChargingDuration,20861,29.2728,"20,861 unmonitored or unrecorded active charging intervals"
+ChargingDuration Exceeds Plugged Duration,1,0.0014,1 session (ID 132725) due to DST clock change on 2018-03-25
+Missing Hot_Unplug,19839,27.8387,"19,839 records without unplug status classification"
+Trial 1 Sessions,28107,39.4407,Managed charging Trial 1
+Trial 2 Sessions,13000,18.242,Managed charging Trial 2
+Trial 3 Sessions,6123,8.592,Managed charging Trial 3 (to be excluded in modeling)
+Unmanaged / Control Sessions (Trial is NaN),24034,33.7253,"24,034 unmanaged control group sessions"
+Overlapping Sessions for Same Participant,133,0.1866,133 sessions start before prior session StopTime

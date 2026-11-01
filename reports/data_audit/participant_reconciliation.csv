@@ -1,0 +1,12 @@
+metric,count,percentage,notes
+Unique Participants in Transactions (Non-null),300,100.0,Distinct participant IDs appearing in transaction records
+Unique Participants in Metadata,673,100.0,Total installed charger participants in metadata
+Matched Participants (Present in Both),300,100.0,100% of transaction participants are identified in metadata
+Transaction Participants Missing from Metadata,0,0.0,No unknown participant IDs present in transactions
+Metadata Participants Missing from Transactions,373,55.42,GreenFlux participants (345) and unused Crowd Charge chargers (28)
+Matched Participants - Crowd Charge Provider,300,100.0,All matched participants belong to Crowd Charge provider
+Matched Participants - GreenFlux Provider,0,0.0,No GreenFlux participants present in CrowdCharge transactions file
+Unmatched Metadata - GreenFlux Provider,345,92.49,GreenFlux trial data is stored in separate external trial datasets
+Unmatched Metadata - Crowd Charge Provider,28,7.51,Crowd Charge installations with zero recorded sessions in this file
+CarKW Specification Discrepancies,0,0.0,Perfect agreement between transaction CarKW and metadata CarkW
+CarKWh Battery Capacity Discrepancies,0,0.0,Perfect agreement between transaction CarKWh and metadata CarkWh
