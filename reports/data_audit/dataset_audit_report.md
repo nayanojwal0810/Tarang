@@ -18,14 +18,15 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 **Key Findings:**
 - **Usability**: The dataset **supports** the planned system, provided specific preprocessing rules, duration capping, and outlier treatments are implemented.
 - **Timestamp Standard**: All raw timestamps are verified and treated as **UTC-aware timestamps** without shifting their recorded clock values.
-- **Transaction Coverage**: 71,264 transaction records spanning from 2017-03-01 19:55:00+00:00 to 2019-01-01 21:52:00+00:00 UTC (22 months).
+- **Transaction Coverage**: 71,264 transaction records spanning from 2017-03-01 19:55:00+00:00 to 2019-01-01 21:52:00+00:00 UTC.
 - **Participant Coverage**: 300 distinct non-null participants in transactions and 673 participants in vehicle metadata.
 - **Reconciliation**: 100% (300/300) of non-null transaction participants match metadata records (all belong to the Crowd Charge DCS provider). Row-level checks across all 67,365 matched records confirm 0 mismatches for `CarKW` and `CarKWh`.
 - **Data Quality Invariants**: Zero negative timestamp intervals (`StopTime < StartTime`), zero duplicate primary keys (`TransactionID`), and zero full-row duplicates.
-- **Unattributed Sessions**: 3,899 records (5.4712%) lack `ParticipantID`. Natural-session matching confirms 3,774 records are exact duplicate sessions of known participant transactions, while 125 records belong to an unregistered charger (`4441003917`).
-- **Participant Session Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (accounting for nested overlaps).
+- **Unattributed Sessions**: 3,899 records (5.4712%) lack `ParticipantID`. Natural-session matching confirms 3,774 records match known participant sessions on the four session fields (`ChargerID, StartTime, StopTime, ConsumedkWh`), while 125 records belong to an unregistered charger (4441003917).
+- **Participant Session Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering 27 nested overlaps missed by sequential shift checks).
 - **Energy Quality**: 20 records exceed the official Electric Nation 100 kWh implausibility threshold (12 exceed 150 kWh, reaching 37,487.88 kWh), and 1,788 records exceed their vehicle's rated battery capacity. Exactly 1 record has missing energy.
-- **Discrepancy Investigation**: Record ID 132725 exhibits `ChargingDuration` (478.0 min) exceeding plugged-in connection duration (463.0 min) by 15.0 minutes. This is documented as an unexplained logging discrepancy requiring investigation.
+- **Charging Duration Discrepancy**: 1 record(s) (Transaction ID(s): 132725) exhibit `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
+- **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **267 participants** and **59,494 sessions**.
 
 ---
 
@@ -35,10 +36,10 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 
 | Workbook | File Size (Bytes) | Sheet Name | Dimensions (Rows x Cols) | Content Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `CrowdCharge Transactions.xlsx` | 11,141,809 (~10.63 MB) | `Explanation` | 1 x 1 | Empty placeholder sheet |
-| `CrowdCharge Transactions.xlsx` | 11,141,809 (~10.63 MB) | `Transaction Data` | 71,265 x 28 | Primary EV charging transactions |
-| `ChargerInstall.xlsx` | 58,976 (~57.59 KB) | `Explanation` | 1 x 1 | Empty placeholder sheet |
-| `ChargerInstall.xlsx` | 58,976 (~57.59 KB) | `20181126_ChargerInstall_DriveEl` | 674 x 10 | Participant charger and vehicle metadata |
+| `CrowdCharge Transactions.xlsx` | 11,141,809 | `Explanation` | 1 x 1 | Empty placeholder sheet |
+| `CrowdCharge Transactions.xlsx` | 11,141,809 | `Transaction Data` | 71,265 x 28 | Primary EV charging transactions |
+| `ChargerInstall.xlsx` | 58,976 | `Explanation` | 1 x 1 | Empty placeholder sheet |
+| `ChargerInstall.xlsx` | 58,976 | `20181126_ChargerInstall_DriveEl` | 674 x 10 | Participant charger and vehicle metadata |
 
 *Note: Excel row counts above include the header row.*
 
@@ -72,10 +73,10 @@ A rigorous natural-session matching investigation was conducted on the 3,899 una
 
 - **Chargers Represented**: 22 physical chargers appear in the unattributed records.
   - **21 chargers** exist in `ChargerInstall.xlsx` as valid participant installations.
-  - **1 charger** (`4441003917`) does NOT exist in `ChargerInstall.xlsx`.
+  - **1 charger** (4441003917) does NOT exist in `ChargerInstall.xlsx`.
 - **Natural Session Matching**: Using the matching key `(ChargerID, StartTime, StopTime, ConsumedkWh)` against the 67,365 known participant transactions:
-  - **3,774 records** match existing participant sessions with 0 differences in start time, stop time, energy, or duration. These represent redundant transmissions / excess duplicate rows where participant metadata was stripped.
-  - **125 records** belong to the unregistered charger (`4441003917`) and cannot be attributed to any trial participant.
+  - **3,774 records** match known participant sessions on the four session fields. Other transaction fields may differ.
+  - **125 records** belong to the unregistered charger (4441003917) and cannot be attributed to any trial participant.
 
 ---
 
@@ -102,7 +103,7 @@ A row-level reconciliation was performed across all 67,365 matched transaction r
 | Unique Participants in Metadata | 673 | 100.00% | Total trial participants across DCS providers |
 | Matched Participants (Both Datasets) | 300 | 100.00% | 100% of transaction participants match |
 | Unmatched Transaction Participants | 0 | 0.00% | Zero unknown participant IDs |
-| Unmatched Metadata Participants | 373 | 55.42% | 345 GreenFlux + 28 Crowd Charge |
+| Unmatched Metadata Participants | 373 | 55.42% | Metadata records without transactions |
 | Row-Level `CarKW` Mismatches | 0 | 0.0000% | 100% agreement across all matched rows |
 | Row-Level `CarKWh` Mismatches | 0 | 0.0000% | 100% agreement across all matched rows |
 | Inconsistent Vehicle Specs per Participant | 0 | 0.00% | Specifications are invariant per participant |
@@ -116,34 +117,38 @@ Energy consumption readings (`ConsumedkWh`) were evaluated against physical thre
 
 | Metric | Record Count | % of Transactions | Assessment |
 | :--- | :--- | :--- | :--- |
-| Missing Energy | 1 | 0.0014% | Confirmed invalid (1 record lacks meter reading) |
+| Missing Energy | 1 | 0.0014% | Confirmed invalid (1 record(s) lack meter reading) |
 | Non-Positive Energy (`<= 0`) | 0 | 0.0000% | All recorded values are positive (min 0.01 kWh) |
 | Energy > 100 kWh | 20 | 0.0281% | Exceeds official Electric Nation plausibility threshold |
 | Energy > 150 kWh | 12 | 0.0168% | Severe outliers reaching 37,487.88 kWh |
-| Energy > Registered `CarKWh` | 1,788 | 2.6542% | Potentially suspicious (includes ~10-15% thermal charging losses) |
+| Energy > Registered `CarKWh` | 1,788 | 2.6542% | Records requiring review (requires investigation into telemetry or multi-cycle sessions) |
 
 ---
 
-## 8. Planned Participant Screening and Observation Density
+## 8. Planned Participant Screening and Observation-Density Filtering
 
 The planned modeling population screening was executed in strict order:
 
-1. **Initial Valid Participant Records**: 67,365 records across 300 participants.
-2. **Exclude Trial 3 (`Trial == 3.0`)**: 6,123 records excluded $\rightarrow$ 61,242 records remaining.
-3. **Exclude Micro-Sessions (< 5 min)**: 509 records excluded $\rightarrow$ 60,733 records remaining.
-4. **Chronological Sorting per Participant**: Sorted by `[ParticipantID, StartTime, StopTime]`.
-5. **Identify & Exclude Overlaps**: 158 overlapping sessions excluded $\rightarrow$ 60,575 records remaining across 299 participants.
-6. **Drop First Session (Lag Unavailable)**: 299 sessions dropped $\rightarrow$ 60,276 retained sessions.
-7. **Retained Session Count Filter ($\ge 10$ sessions after dropping first session)**:
-   - **11 participants** have $< 10$ retained sessions (accounting for 56 sessions).
-   - **287 participants** have $\ge 10$ retained sessions (accounting for **60,220 sessions**).
-8. **Observation Density on Eligible Participants (287 vehicles)**:
-   - Mean observation span: 374.69 days (~53.5 weeks).
-   - Mean sessions per week: 3.98 sessions/week.
-   - Median sessions per week: 3.6 sessions/week.
-   - Mean average interval between sessions: 3.13 days.
-   - Participants with $< 1$ session/week: 21 participants.
-   - Participants with $< 0.5$ sessions/week: 3 participants.
+| Step | Action | Filter / Rule Applied | Participants | Sessions |
+| :---: | :--- | :--- | ---:| ---:|
+| 1 | Baseline Population | Valid ParticipantID and valid timestamps | 300 | 67,365 |
+| 2 | Exclude Trial 3 | `Trial != 3.0` | 300 | 61,242 |
+| 3 | Duration Filter | `dur_min >= 5.0` | 299 | 60,733 |
+| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | 299 | 60,733 |
+| 5 | Overlap Removal | Remove sessions where $\text{StartTime} < \max(\text{StopTime})$ | 299 | 60,575 |
+| 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,276 |
+| 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,220 |
+| 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | **267** | **59,494** |
+
+### Observation-Density Results
+- **Before Density Filtering**: 287 participants, 60,220 sessions.
+- **Excluded by Density Rule**: 20 participants, 726 sessions.
+- **After Density Filtering**: **267 participants**, **59,494 sessions**.
+- **Final Population Density Metrics (267 vehicles)**:
+  - Mean observation period: 374.88 days.
+  - Mean sessions per week: 4.2 sessions/week.
+  - Median sessions per week: 3.8 sessions/week.
+  - Mean average interval between sessions: 2.44 days.
 
 ---
 
@@ -182,4 +187,5 @@ The raw datasets **successfully pass the feasibility audit** for building the TA
 - 100% metadata concordance across all 300 active trial participants.
 - The dual prediction targets (plugged-in duration capped at 336 hours and energy consumption) can be constructed reliably.
 - All 13 planned features are feasible without target leakage.
-- Data-cleaning rules must eliminate zero-duration sessions (92), extreme duration outliers, energy outliers (> 100 kWh), overlapping records (160), and the 3,899 unattributed/duplicate records.
+- Data-cleaning rules must eliminate zero-duration sessions (92), extreme duration outliers, energy outliers (> 100 kWh, 20), overlapping records (160), and unattributed records (3,899).
+- Participant screening yields a robust population of **267 participants** and **59,494 sessions**.

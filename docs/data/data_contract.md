@@ -117,5 +117,6 @@ The modeling dataset must be constructed by executing the following planned sequ
 | 4 | Chronological Sorting | Sort by `[ParticipantID, StartTime, StopTime]` | Enforces physical arrival order |
 | 5 | Overlap Resolution | Exclude sessions where $\text{StartTime} < \max_{j < i}(\text{StopTime}_j)$ | 158 overlapping sessions excluded $\rightarrow$ 60,575 records (299 participants) |
 | 6 | Lag Initialization | Drop first session per participant (no prior history) | 299 sessions dropped $\rightarrow$ 60,276 retained sessions |
-| 7 | Minimum History Filter | Retain participants with $\ge 10$ sessions after step 6 | 11 participants excluded (56 sessions) $\rightarrow$ **287 participants (60,220 sessions retained)** |
-| 8 | Target Preparation | Cap target duration at 336.0 hours; preserve original StopTime | 23 sessions capped; 0 timestamps altered |
+| 7 | Minimum History Filter | Retain participants with $\ge 10$ sessions after step 6 | 12 participants excluded (56 sessions) $\rightarrow$ 287 participants (60,220 sessions retained) |
+| 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | 20 participants excluded (726 sessions) $\rightarrow$ **267 participants (59,494 sessions retained)** |
+| 9 | Target Preparation | Cap target duration at 336.0 hours; preserve original StopTime | 23 sessions capped; 0 timestamps altered |

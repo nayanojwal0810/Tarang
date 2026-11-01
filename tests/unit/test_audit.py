@@ -2,25 +2,32 @@
 
 Uses small synthetic DataFrames to thoroughly verify core audit logic,
 including timestamp handling, nested overlaps, row-level metadata reconciliation,
-energy thresholds, participant history screening, and anti-leakage boundaries.
+energy thresholds, participant history screening, observation-density filtering,
+anti-leakage boundaries, schema validation, and dynamic report rendering.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
 
 from tarang.data.audit import (
+    REQUIRED_META_COLUMNS,
+    REQUIRED_TX_COLUMNS,
     audit_energy_quality,
     audit_feature_feasibility,
     audit_metadata_row_level,
     calculate_missingness,
     detect_duplicates,
     detect_session_overlaps,
+    generate_markdown_report,
     investigate_unattributed_sessions,
+    load_dataset,
     parse_utc_timestamps,
     screen_participant_history,
+    validate_workbook_schema,
 )
 
 
@@ -159,7 +166,7 @@ def test_participant_inconsistent_vehicle_specs() -> None:
     assert metrics["participants_with_inconsistent_carkw"] == 1
 
 
-def test_unattributed_sessions_and_duplicate_matching() -> None:
+def test_unattributed_sessions_and_natural_session_matching() -> None:
     """Test natural session matching rule on unattributed records."""
     df_tx = pd.DataFrame({
         "TransactionID": [101, 102, 201, 202],
@@ -181,9 +188,34 @@ def test_unattributed_sessions_and_duplicate_matching() -> None:
     assert res["unknown_chargers_count"] == 1
     assert res["unknown_charger_ids"] == ["9999"]
     assert res["unknown_charger_records"] == 1
-    assert res["exact_duplicate_session_records"] == 1  # Tx 201 matches Tx 101 on natural session key
-    assert res["excess_duplicate_rows"] == 1
-    assert res["unattributed_non_duplicate_records"] == 1  # Tx 202
+    assert res["matched_4field_session_records"] == 1  # Tx 201 matches Tx 101 on natural 4-field session key
+    assert res["unmatched_session_records"] == 1       # Tx 202
+
+
+def test_natural_key_matches_differing_transaction_fields() -> None:
+    """Test natural session matching where other transaction fields (Trial, GroupID, telemetry) differ."""
+    df_tx = pd.DataFrame({
+        "TransactionID": [101, 102, 201, 202],
+        "ChargerID": [3501, 3502, 3501, 9999],
+        "ParticipantID": ["EN001", "EN002", None, None],
+        "StartTime": ["2017-05-01 10:00:00", "2017-05-02 11:00:00", "2017-05-01 10:00:00", "2017-05-03 14:00:00"],
+        "StopTime": ["2017-05-01 12:00:00", "2017-05-02 13:00:00", "2017-05-01 12:00:00", "2017-05-03 16:00:00"],
+        "ConsumedkWh": [10.5, 8.0, 10.5, 12.0],
+        # Differing transaction fields:
+        "Trial": [1.0, 1.0, 2.0, 1.0],
+        "GroupID": [5.0, 5.0, 10.0, None],
+        "Max_Current_Drawn_for_T": [16.0, 32.0, 32.0, 16.0],
+    })
+    df_meta = pd.DataFrame({
+        "ParticipantID": ["EN001", "EN002"],
+        "Charger": ["3501", "3502"],  # 9999 is unregistered
+    })
+    res = investigate_unattributed_sessions(df_tx, df_meta)
+
+    assert res["total_unattributed_records"] == 2
+    assert res["matched_4field_session_records"] == 1
+    assert res["unknown_charger_records"] == 1
+    assert res["unknown_charger_ids"] == ["9999"]
 
 
 def test_energy_quality_thresholds() -> None:
@@ -206,43 +238,239 @@ def test_energy_quality_thresholds() -> None:
     # ConsumedkWh > CarKWh: 38.0 > 33.0, 110.0 > 75.0, 160.0 > 24.0 (3 records out of 4 valid pairs)
     assert metrics["energy_exceeds_carkwh"] == 3
     assert metrics["energy_exceeds_carkwh_pct"] == 75.0
+    assert metrics["max_energy"] == 160.0
 
 
-def test_screen_participant_history_retained_and_density() -> None:
-    """Test participant screening: Trial 3 exclusion, duration threshold, overlap, dropping first session, and retained >= 10."""
-    # Build 14 valid sessions for EN001, 5 valid sessions for EN002, and 1 Trial 3 session for EN001
-    dates_en001 = pd.date_range("2017-05-01 10:00:00", periods=15, freq="2D")
-    df_en001 = pd.DataFrame({
-        "TransactionID": range(101, 116),
-        "ParticipantID": "EN001",
-        "StartTime": dates_en001,
-        "StopTime": dates_en001 + pd.Timedelta(hours=4),
-        "Trial": [1.0] * 14 + [3.0],  # 1 Trial 3 session
+def test_density_rule_participant_fails_minimum_density() -> None:
+    """A participant who passes the minimum session count (>=10) but fails the density rule.
+
+    Observation period: 84 days.
+    Required sessions: observation_days / 7 = 84 / 7 = 12 sessions.
+    Retained sessions: 10 sessions.
+    Since 10 < 12, the participant is excluded by the density filter.
+    """
+    start_dates = [
+        pd.Timestamp("2017-01-01 10:00:00") + pd.Timedelta(days=i * 8.4)
+        for i in range(11)
+    ]
+    df = pd.DataFrame({
+        "TransactionID": range(1, 12),
+        "ParticipantID": "EN_SPARSE",
+        "StartTime": start_dates,
+        "StopTime": [t + pd.Timedelta(hours=2) for t in start_dates],
+        "Trial": 1.0,
     })
-    dates_en002 = pd.date_range("2017-06-01 10:00:00", periods=5, freq="3D")
-    df_en002 = pd.DataFrame({
-        "TransactionID": range(201, 206),
-        "ParticipantID": "EN002",
-        "StartTime": dates_en002,
-        "StopTime": dates_en002 + pd.Timedelta(hours=2),
-        "Trial": [1.0] * 5,
+    metrics = screen_participant_history(df)
+    assert metrics["participants_before_density"] == 1
+    assert metrics["sessions_before_density"] == 10
+    assert metrics["participants_excluded_density"] == 1
+    assert metrics["sessions_excluded_density"] == 10
+    assert metrics["final_eligible_participants"] == 0
+    assert metrics["final_eligible_sessions"] == 0
+
+
+def test_density_rule_participant_passes_density() -> None:
+    """A participant who passes the observation-density rule.
+
+    Observation period: 70 days.
+    Required sessions: 70 / 7 = 10 sessions.
+    Retained sessions: 15 sessions.
+    Since 15 >= 10, the participant is retained.
+    """
+    base = pd.Timestamp("2017-01-01 10:00:00")
+    times = [base]
+    retained_base = base + pd.Timedelta(days=1)
+    times += [retained_base + pd.Timedelta(days=i * 5) for i in range(15)]
+    df = pd.DataFrame({
+        "TransactionID": range(1, 17),
+        "ParticipantID": "EN_ACTIVE",
+        "StartTime": times,
+        "StopTime": [t + pd.Timedelta(hours=2) for t in times],
+        "Trial": 1.0,
     })
-    df_combined = pd.concat([df_en001, df_en002], ignore_index=True)
+    metrics = screen_participant_history(df)
+    assert metrics["participants_before_density"] == 1
+    assert metrics["sessions_before_density"] == 15
+    assert metrics["participants_excluded_density"] == 0
+    assert metrics["sessions_excluded_density"] == 0
+    assert metrics["final_eligible_participants"] == 1
+    assert metrics["final_eligible_sessions"] == 15
 
-    metrics = screen_participant_history(df_combined)
 
-    assert metrics["initial_valid_records"] == 20
-    assert metrics["initial_participants"] == 2
-    assert metrics["trial_3_excluded"] == 1  # 1 Trial 3 excluded
-    assert metrics["remaining_after_t3"] == 19
-    # Dropped first session: 2 (1 per participant)
-    # Remaining: EN001 has 13 retained, EN002 has 4 retained
-    assert metrics["retained_sessions_total"] == 17  # 13 + 4
-    assert metrics["participants_lt_10_retained"] == 1  # EN002 has 4 (< 10)
-    assert metrics["sessions_in_lt_10_retained"] == 4
-    assert metrics["eligible_participants_gte_10"] == 1  # EN001 has 13 (>= 10)
-    assert metrics["eligible_sessions_total"] == 13
-    assert metrics["density_mean_span_days"] > 0.0
+def test_density_rule_participant_boundary_exact_threshold() -> None:
+    """A participant exactly on the density threshold (retained_count == observation_days / 7).
+
+    The screening rule is strictly 'retained_session_count < observation_days / 7'.
+    When retained_session_count == observation_days / 7, the participant is NOT excluded.
+
+    Observation period: 70 days.
+    observation_days / 7 = 10.0 sessions.
+    Retained sessions: exactly 10 sessions.
+    """
+    base = pd.Timestamp("2017-01-01 10:00:00")
+    retained_start = pd.Timestamp("2017-01-02 10:00:00")
+    retained_dates = [retained_start + pd.Timedelta(days=i * 7) for i in range(10)]
+    all_starts = [base] + retained_dates
+    all_stops = [base + pd.Timedelta(hours=1)] + [t + pd.Timedelta(hours=1) for t in retained_dates[:-1]] + [retained_start + pd.Timedelta(days=70)]
+    df = pd.DataFrame({
+        "TransactionID": range(1, 12),
+        "ParticipantID": "EN_BOUNDARY",
+        "StartTime": all_starts,
+        "StopTime": all_stops,
+        "Trial": 1.0,
+    })
+    metrics = screen_participant_history(df)
+    assert metrics["participants_before_density"] == 1
+    assert metrics["sessions_before_density"] == 10
+    assert metrics["participants_excluded_density"] == 0
+    assert metrics["final_eligible_participants"] == 1
+    assert metrics["final_eligible_sessions"] == 10
+
+
+def test_final_screening_counts_on_real_workbooks() -> None:
+    """Validate expected screening counts on the actual Electric Nation transactions workbook:
+    - Before density filtering: 287 participants, 60,220 sessions
+    - Excluded by density rule: 20 participants, 726 sessions
+    - After density filtering: 267 participants, 59,494 sessions
+    """
+    tx_path = Path("data/raw/electric_nation/CrowdCharge Transactions.xlsx")
+    if not tx_path.is_file():
+        pytest.skip("Raw transactions workbook not available in local workspace")
+
+    df_tx = load_dataset(tx_path, sheet_name="Transaction Data")
+    metrics = screen_participant_history(df_tx)
+
+    assert metrics["participants_before_density"] == 287
+    assert metrics["sessions_before_density"] == 60220
+    assert metrics["participants_excluded_density"] == 20
+    assert metrics["sessions_excluded_density"] == 726
+    assert metrics["final_eligible_participants"] == 267
+    assert metrics["final_eligible_sessions"] == 59494
+
+
+def test_audit_safe_with_malformed_and_missing_timestamps() -> None:
+    """Verify that the audit handles malformed and missing timestamps safely without crashing,
+    and invalid timestamp records do not enter duration or screening calculations.
+    """
+    df = pd.DataFrame({
+        "TransactionID": [1, 2, 3, 4],
+        "ParticipantID": ["EN001", "EN001", "EN001", "EN001"],
+        "StartTime": ["2017-05-01 10:00:00", "corrupt-date", None, "2017-05-01 14:00:00"],
+        "StopTime": ["2017-05-01 12:00:00", "2017-05-01 13:00:00", "2017-05-01 15:00:00", "broken-stop"],
+        "Trial": [1.0, 1.0, 1.0, 1.0],
+    })
+    # Must parse without exception
+    start_utc, stop_utc, ts_metrics = parse_utc_timestamps(df, "StartTime", "StopTime")
+    assert ts_metrics["start_parse_failures"] == 1
+    assert ts_metrics["stop_parse_failures"] == 1
+    assert ts_metrics["missing_start"] == 2
+    assert ts_metrics["missing_stop"] == 1
+
+    # detect_session_overlaps must complete safely
+    overlap_mask, overlap_count = detect_session_overlaps(df, "ParticipantID", "StartTime", "StopTime")
+    assert overlap_count == 0
+
+    # screen_participant_history must complete safely without raising an exception
+    screening = screen_participant_history(df)
+    assert screening["initial_valid_records"] == 1  # Only row 1 has both valid timestamps
+
+
+def test_schema_validation_clear_errors() -> None:
+    """Test schema validation raises descriptive ValueError detailing missing columns and workbook name."""
+    valid_tx = pd.DataFrame(columns=REQUIRED_TX_COLUMNS)
+    validate_workbook_schema(valid_tx, REQUIRED_TX_COLUMNS, "Transactions")
+
+    # Incomplete transactions schema missing TransactionID and ConsumedkWh
+    incomplete_tx = pd.DataFrame(columns=["ChargerID", "ParticipantID", "StartTime"])
+    with pytest.raises(ValueError) as excinfo:
+        validate_workbook_schema(incomplete_tx, REQUIRED_TX_COLUMNS, "Transactions Workbook")
+
+    err_msg = str(excinfo.value)
+    assert "Transactions Workbook" in err_msg
+    assert "Missing required column(s)" in err_msg
+    assert "TransactionID" in err_msg
+    assert "ConsumedkWh" in err_msg
+
+    # Test metadata schema validation missing CarkW and CarkWh
+    incomplete_meta = pd.DataFrame(columns=["ParticipantID", "Charger"])
+    with pytest.raises(ValueError) as excinfo_meta:
+        validate_workbook_schema(incomplete_meta, REQUIRED_META_COLUMNS, "ChargerInstall.xlsx")
+    assert "ChargerInstall.xlsx" in str(excinfo_meta.value)
+    assert "CarkW" in str(excinfo_meta.value)
+    assert "CarkWh" in str(excinfo_meta.value)
+
+
+def test_report_values_change_dynamically_with_metric_changes() -> None:
+    """Test that generate_markdown_report produces dynamically updated text matching input metrics."""
+    base_tx_meta = {"size_bytes": 10000000, "sheet_dimensions": {"Transaction Data": {"max_row": 70001, "max_column": 28}, "Explanation": {"max_row": 1, "max_column": 1}}}
+    base_meta_meta = {"size_bytes": 50000, "sheet_dimensions": {"20181126_ChargerInstall_DriveEl": {"max_row": 601, "max_column": 10}, "Explanation": {"max_row": 1, "max_column": 1}}}
+    ts_metrics = {
+        "start_col": "StartTime", "stop_col": "StopTime", "timezone": "UTC",
+        "earliest_start": "2017-03-01 10:00:00+00:00", "latest_start": "2018-12-31 10:00:00+00:00",
+        "earliest_stop": "2017-03-01 12:00:00+00:00", "latest_stop": "2019-01-01 10:00:00+00:00",
+        "start_parse_failures": 0, "stop_parse_failures": 0, "missing_start": 0, "missing_stop": 0,
+        "negative_intervals": 0, "zero_intervals": 92, "negative_intervals_pct": 0.0, "zero_intervals_pct": 0.13,
+    }
+    unattr_metrics = {
+        "total_unattributed_records": 3899, "unattributed_percentage": 5.47,
+        "chargers_involved": 22, "known_chargers_count": 21, "unknown_chargers_count": 1,
+        "unknown_charger_ids": ["4441003917"], "unknown_charger_records": 125,
+        "matched_4field_session_records": 3774, "unmatched_session_records": 125,
+    }
+    row_meta_metrics = {
+        "unique_tx_participants": 300, "unique_meta_participants": 673, "matched_participants": 300,
+        "tx_only_participants": 0, "meta_only_participants": 373, "total_matched_transaction_rows": 67365,
+        "row_level_carkw_mismatches": 0, "row_level_carkw_mismatch_pct": 0.0,
+        "row_level_carkwh_mismatches": 0, "row_level_carkwh_mismatch_pct": 0.0,
+        "row_level_charger_matches": 67365, "row_level_charger_mismatches": 0, "row_level_charger_mismatch_pct": 0.0,
+        "participants_with_inconsistent_carkw": 0, "participants_with_inconsistent_carkwh": 0,
+    }
+    energy_metrics = {
+        "total_records": 71264, "missing_energy": 1, "missing_energy_pct": 0.0014,
+        "non_positive_energy": 0, "non_positive_energy_pct": 0.0,
+        "energy_gt_100kwh": 20, "energy_gt_100kwh_pct": 0.028,
+        "energy_gt_150kwh": 12, "energy_gt_150kwh_pct": 0.0168,
+        "energy_exceeds_carkwh": 1788, "energy_exceeds_carkwh_pct": 2.65,
+        "max_energy": 37487.88,
+    }
+    ch_discrepancy = {"count": 1, "ids": [132725]}
+
+    screening_a = {
+        "initial_valid_records": 67365, "initial_participants": 300, "trial_3_excluded": 6123,
+        "remaining_after_t3": 61242, "participants_after_t3": 300, "short_sessions_excluded": 509,
+        "remaining_after_short": 60733, "participants_after_short": 299, "screened_overlaps": 158,
+        "remaining_after_overlaps": 60575, "participants_after_overlaps": 299, "dropped_first_sessions": 299,
+        "retained_sessions_total": 60276, "participants_after_dropped_first": 299,
+        "participants_lt_10_retained": 12, "sessions_in_lt_10_retained": 56,
+        "participants_before_density": 287, "sessions_before_density": 60220,
+        "participants_excluded_density": 20, "sessions_excluded_density": 726,
+        "final_eligible_participants": 267, "final_eligible_sessions": 59494,
+        "density_mean_span_days": 374.88, "density_mean_sessions_per_week": 4.20,
+        "density_median_sessions_per_week": 3.80, "density_mean_avg_interval_days": 2.44,
+    }
+
+    report_a = generate_markdown_report(
+        base_tx_meta, base_meta_meta, ts_metrics, unattr_metrics, row_meta_metrics,
+        energy_metrics, overlap_count=160, simple_overlap_count=133,
+        ch_discrepancy_info=ch_discrepancy, screening_metrics=screening_a, total_tx=71264,
+    )
+    assert "267 participants" in report_a
+    assert "59,494 sessions" in report_a
+    assert "160 sessions" in report_a
+
+    # Metric set B with altered participant count and overlaps
+    screening_b = dict(screening_a)
+    screening_b["final_eligible_participants"] = 240
+    screening_b["final_eligible_sessions"] = 51234
+    report_b = generate_markdown_report(
+        base_tx_meta, base_meta_meta, ts_metrics, unattr_metrics, row_meta_metrics,
+        energy_metrics, overlap_count=95, simple_overlap_count=80,
+        ch_discrepancy_info=ch_discrepancy, screening_metrics=screening_b, total_tx=71264,
+    )
+    assert "240 participants" in report_b
+    assert "51,234 sessions" in report_b
+    assert "95 sessions" in report_b
+    assert report_a != report_b
 
 
 def test_feature_feasibility_completeness_and_leakage() -> None:

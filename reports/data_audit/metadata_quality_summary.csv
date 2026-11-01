@@ -1,6 +1,6 @@
 check_name,record_count,percentage,description
 Total Records,673,100.0,Total installation records in sheet 20181126_ChargerInstall_DriveEl
-Unique Participant IDs,673,100.0,All 673 ParticipantID values are distinct
+Unique Participant IDs,673,100.0,Participant identifiers completeness and uniqueness
 Duplicate Participant IDs,0,0.0,Duplicate ParticipantIDs
 Duplicate Complete Rows,0,0.0,Duplicate rows
 Missing ParticipantID,0,0.0,ParticipantID completeness
@@ -13,12 +13,12 @@ Missing CarModel,0,0.0,Vehicle model completeness
 Missing PIVType,0,0.0,Powertrain classification completeness
 Missing CarkW,0,0.0,Charging power rating completeness
 Missing CarkWh,0,0.0,Battery usable capacity completeness
-Greenflux Provider Count,345,51.263,345 GreenFlux trial participants
-Crowd Charge Provider Count,328,48.737,328 Crowd Charge trial participants
-Electric only (BEV) Vehicles,315,46.8053,315 Battery Electric Vehicles
-Plug-in Hybrid (PHEV) Vehicles,272,40.416,272 PHEV vehicles (including 1 with lowercase 'p')
-Range Extender (REX) Vehicles,86,12.7786,86 Range Extender vehicles (e.g. BMW i3 REX)
-CarkW == 3.6 kW,318,47.2511,318 single-phase 16A chargers
-CarkW == 7.0 kW,355,52.7489,355 single-phase 32A chargers
-Unique Car Manufacturers,18,2.6746,18 distinct car makes represented
-Unique Car Models,45,6.6865,45 distinct vehicle models represented
+Greenflux Provider Count,345,51.263,GreenFlux trial participants
+Crowd Charge Provider Count,328,48.737,Crowd Charge trial participants
+Electric only (BEV) Vehicles,315,46.8053,Battery Electric Vehicles
+Plug-in Hybrid (PHEV) Vehicles,272,40.416,PHEV vehicles
+Range Extender (REX) Vehicles,86,12.7786,Range Extender vehicles
+CarkW == 3.6 kW,318,47.2511,Single-phase 16A chargers
+CarkW == 7.0 kW,355,52.7489,Single-phase 32A chargers
+Unique Car Manufacturers,18,2.6746,Distinct car makes represented
+Unique Car Models,45,6.6865,Distinct vehicle models represented
