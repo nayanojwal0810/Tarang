@@ -52,7 +52,7 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
-- Parsing success is 100.0% with 0 start parse failures and 0 stop parse failures.
+- Parsing success rate for non-missing raw timestamps is 100.0% (0 parse failure(s) across 142528 non-missing timestamp cells; 0 missing cell(s)).
 
 | Timestamp Metric | Start Time (`StartTime`) | Stop Time (`StopTime`) |
 | :--- | :--- | :--- |
@@ -117,8 +117,8 @@ Energy consumption readings (`ConsumedkWh`) were evaluated against physical thre
 
 | Metric | Record Count | % of Transactions | Assessment |
 | :--- | :--- | :--- | :--- |
-| Missing Energy | 1 | 0.0014% | Confirmed invalid (1 record(s) lack meter reading) |
-| Non-Positive Energy (`<= 0`) | 0 | 0.0000% | All recorded values are positive (min 0.01 kWh) |
+| Missing Energy | 1 | 0.0014% | Confirmed invalid (1 record lacks meter reading) |
+| Non-Positive Energy (`<= 0`) | 0 | 0.0000% | No non-positive readings found (all recorded values are positive, min 0.01 kWh) |
 | Energy > 100 kWh | 20 | 0.0281% | Exceeds official Electric Nation plausibility threshold |
 | Energy > 150 kWh | 12 | 0.0168% | Severe outliers reaching 37,487.88 kWh |
 | Energy > Registered `CarKWh` | 1,788 | 2.6542% | Records requiring review (requires investigation into telemetry or multi-cycle sessions) |
@@ -142,7 +142,7 @@ The planned modeling population screening was executed in strict order:
 
 ### Screening Transition Details
 - **Step 5 (Overlap Removal)**: Yields 299 participants and 60,575 sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (exactly 1 session per participant). Exactly 1 participant had only a single session, leaving 0 retained sessions for that participant. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant after overlap removal). 1 participant(s) had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
 - **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **11 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,220 sessions) pass the minimum-history threshold.
 - **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,494 sessions**.
 

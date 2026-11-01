@@ -98,14 +98,19 @@ pip install -r requirements.txt
 
 The TARANG dataset audit relies on empirical smart charging records from the UK **Electric Nation** trial (funded by Western Power Distribution / National Grid Electricity Distribution and delivered by EA Technology and DriveElectric).
 
-To run the audit locally, place the two raw Excel workbooks into the project raw directory:
+Before running the audit, both workbooks must be downloaded from the official repository and placed in the project raw directory:
 
-- **Target Directory**: `data/raw/electric_nation/`
-- **Required Workbooks & Sheets**:
-  1. `CrowdCharge Transactions.xlsx`
-     - Required sheet: `Transaction Data` (71,264 rows $\times$ 28 columns)
-  2. `ChargerInstall.xlsx`
-     - Required sheet: `20181126_ChargerInstall_DriveEl` (673 rows $\times$ 10 columns)
+- **Official Electric Nation dataset page**: https://commercial.nationalgrid.co.uk/electric-nation-data
+- **Crowd Charge Transactions workbook**: https://commercial.nationalgrid.co.uk/downloads-view/81646
+- **Charger Install workbook**: https://commercial.nationalgrid.co.uk/downloads/81655/chargerinstall.xlsx
+
+**Target Directory**: `data/raw/electric_nation/`
+
+**Required Workbooks & Sheets**:
+1. `CrowdCharge Transactions.xlsx` — `Transaction Data` (71,264 rows $\times$ 28 columns)
+2. `ChargerInstall.xlsx` — `20181126_ChargerInstall_DriveEl` (673 rows $\times$ 10 columns)
+
+Both workbooks must be downloaded and placed in `data/raw/electric_nation/` before running the audit.
 
 > **Note**: The raw Excel workbooks contain participant-level trial records and are excluded from Git version control via `.gitignore`. Do not commit raw workbooks to the repository.
 

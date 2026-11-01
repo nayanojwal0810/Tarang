@@ -234,6 +234,8 @@ def parse_utc_timestamps(
 
     missing_start = int(start_dt.isnull().sum())
     missing_stop = int(stop_dt.isnull().sum())
+    raw_missing_start = int(raw_start.isnull().sum())
+    raw_missing_stop = int(raw_stop.isnull().sum())
 
     if not start_dt.empty and start_dt.dt.tz is None:
         start_utc = start_dt.dt.tz_localize("UTC")
@@ -264,6 +266,8 @@ def parse_utc_timestamps(
         "total_records": total_records,
         "missing_start": missing_start,
         "missing_stop": missing_stop,
+        "raw_missing_start": raw_missing_start,
+        "raw_missing_stop": raw_missing_stop,
         "start_parse_failures": start_parse_failures,
         "stop_parse_failures": stop_parse_failures,
         "earliest_start": str(start_utc.dropna().min()) if not start_utc.dropna().empty else None,
@@ -486,8 +490,23 @@ def audit_metadata_row_level(
         charger_matches = int((c_tx_str == c_meta_str).sum())
 
         tx_valid_p = df_tx[df_tx["ParticipantID"].notna()]
-        p_kw_var = int((tx_valid_p.groupby("ParticipantID")["CarKW"].nunique() > 1).sum()) if "CarKW" in tx_valid_p.columns else 0
-        p_kwh_var = int((tx_valid_p.groupby("ParticipantID")["CarKWh"].nunique() > 1).sum()) if "CarKWh" in tx_valid_p.columns else 0
+        if "CarKW" in tx_valid_p.columns:
+            kw_counts = tx_valid_p.groupby("ParticipantID")["CarKW"].nunique()
+            inconsistent_kw_pids = set(kw_counts[kw_counts > 1].index)
+        else:
+            inconsistent_kw_pids = set()
+
+        if "CarKWh" in tx_valid_p.columns:
+            kwh_counts = tx_valid_p.groupby("ParticipantID")["CarKWh"].nunique()
+            inconsistent_kwh_pids = set(kwh_counts[kwh_counts > 1].index)
+        else:
+            inconsistent_kwh_pids = set()
+
+        combined_inconsistent_pids = inconsistent_kw_pids | inconsistent_kwh_pids
+
+        p_kw_var = len(inconsistent_kw_pids)
+        p_kwh_var = len(inconsistent_kwh_pids)
+        p_specs_var = len(combined_inconsistent_pids)
 
         matched_providers = df_meta[df_meta["ParticipantID"].isin(common_pids)]["DCSProvider"].value_counts().to_dict() if "DCSProvider" in df_meta.columns else {}
         unmatched_providers = df_meta[~df_meta["ParticipantID"].isin(common_pids)]["DCSProvider"].value_counts().to_dict() if "DCSProvider" in df_meta.columns else {}
@@ -499,6 +518,7 @@ def audit_metadata_row_level(
         charger_matches = 0
         p_kw_var = 0
         p_kwh_var = 0
+        p_specs_var = 0
         matched_providers = {}
         unmatched_providers = {}
 
@@ -518,6 +538,7 @@ def audit_metadata_row_level(
         "row_level_charger_mismatch_pct": round((charger_mismatches / total_matched_rows * 100.0) if total_matched_rows > 0 else 0.0, 4),
         "participants_with_inconsistent_carkw": p_kw_var,
         "participants_with_inconsistent_carkwh": p_kwh_var,
+        "participants_with_inconsistent_specs": p_specs_var,
         "matched_providers": matched_providers,
         "unmatched_providers": unmatched_providers,
     }
@@ -552,6 +573,8 @@ def audit_energy_quality(df_tx: pd.DataFrame) -> Dict[str, Any]:
             "energy_gt_150kwh_pct": 0.0,
             "energy_exceeds_carkwh": 0,
             "energy_exceeds_carkwh_pct": 0.0,
+            "min_positive_energy": None,
+            "max_energy": 0.0,
         }
 
     consumed = df_tx["ConsumedkWh"]
@@ -566,6 +589,8 @@ def audit_energy_quality(df_tx: pd.DataFrame) -> Dict[str, Any]:
     exceeds_carkwh = int(((consumed > carkwh) & valid_carkwh_mask).sum())
     valid_carkwh_count = int(valid_carkwh_mask.sum())
     max_energy = float(consumed.dropna().max()) if not consumed.dropna().empty else 0.0
+    pos_vals = consumed[consumed > 0].dropna()
+    min_positive_energy = float(pos_vals.min()) if not pos_vals.empty else None
 
     return {
         "total_records": total_records,
@@ -580,6 +605,7 @@ def audit_energy_quality(df_tx: pd.DataFrame) -> Dict[str, Any]:
         "energy_exceeds_carkwh": exceeds_carkwh,
         "energy_exceeds_carkwh_pct": round((exceeds_carkwh / valid_carkwh_count * 100.0) if valid_carkwh_count > 0 else 0.0, 4),
         "max_energy": max_energy,
+        "min_positive_energy": min_positive_energy,
     }
 
 
@@ -697,6 +723,7 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
     dropped_first = int(df_no_overlap["ParticipantID"].nunique())
     df_lags = df_no_overlap[df_no_overlap["session_rank"] > 0].copy()
     participants_after_dropped_first = int(df_lags["ParticipantID"].nunique())
+    participants_zero_retained = participants_after_overlaps - participants_after_dropped_first
 
     # Step 7: Minimum 10 retained sessions AFTER dropping first session
     retained_counts = df_lags.groupby("ParticipantID").size()
@@ -766,6 +793,7 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         "dropped_first_sessions": dropped_first,
         "retained_sessions_total": len(df_lags),
         "participants_after_dropped_first": participants_after_dropped_first,
+        "participants_zero_retained_after_dropped_first": participants_zero_retained,
         "participants_lt_10_retained": len(low_retained_pids),
         "sessions_in_lt_10_retained": int(retained_counts.loc[low_retained_pids].sum()) if len(low_retained_pids) > 0 else 0,
         "participants_before_density": participants_before_density,
@@ -1039,7 +1067,7 @@ def generate_transaction_quality_summary(
     charger_pct = round(unique_chargers / total * 100.0, 4) if total > 0 else 0.0
 
     checks = [
-        ("Total Transaction Records", total, 100.0, "Total rows in Transaction Data sheet"),
+        ("Total Transaction Records", total, 100.0 if total > 0 else 0.0, "Total rows in Transaction Data sheet"),
         ("Unique Transaction Identifiers", unique_tx_ids, unique_tx_id_pct, f"{unique_tx_ids:,} distinct primary keys in Transaction Data ({unique_tx_id_pct:.2f}% uniqueness)"),
         ("Duplicate Transaction IDs", dup_tx_ids, dup_tx_pct, "Duplicate TransactionID values"),
         ("Duplicate Complete Rows", dup_rows, dup_rows_pct, "Full duplicate rows"),
@@ -1087,7 +1115,7 @@ def generate_metadata_quality_summary(df_meta: pd.DataFrame) -> pd.DataFrame:
     unique_pid_pct = round(unique_pids / total * 100.0, 4) if total > 0 else 0.0
 
     checks = [
-        ("Total Records", total, 100.0, "Total installation records in sheet 20181126_ChargerInstall_DriveEl"),
+        ("Total Records", total, 100.0 if total > 0 else 0.0, "Total installation records in sheet 20181126_ChargerInstall_DriveEl"),
         ("Unique Participant IDs", unique_pids, unique_pid_pct, f"{unique_pids} distinct participant identifiers in metadata ({unique_pid_pct:.2f}% uniqueness)"),
         ("Duplicate Participant IDs", dup_pids, round(dup_pids / total * 100.0, 4) if total > 0 else 0.0, "Duplicate ParticipantIDs"),
         ("Duplicate Complete Rows", dup_rows, round(dup_rows / total * 100.0, 4) if total > 0 else 0.0, "Duplicate rows"),
@@ -1151,7 +1179,10 @@ def generate_participant_reconciliation(
     matched_pct = round(matched_pids / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
     tx_only_pct = round(tx_only / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
     meta_only_pct = round(meta_only / total_meta_pids * 100.0, 2) if total_meta_pids else 0.0
-    inconsistent_pids = row_meta_metrics.get("participants_with_inconsistent_carkw", 0)
+    inconsistent_pids = row_meta_metrics.get(
+        "participants_with_inconsistent_specs",
+        row_meta_metrics.get("participants_with_inconsistent_carkw", 0),
+    )
     inconsistent_pct = round(inconsistent_pids / matched_pids * 100.0, 2) if matched_pids else 0.0
 
     carkw_mismatches = row_meta_metrics.get("row_level_carkw_mismatches", 0)
@@ -1248,16 +1279,74 @@ def generate_markdown_report(
     meta_only_pids = row_meta_metrics.get("meta_only_participants", 0)
     meta_only_pct = round(meta_only_pids / meta_pids * 100.0, 2) if meta_pids else 0.0
 
-    inconsistent_pids = row_meta_metrics.get("participants_with_inconsistent_carkw", 0)
+    inconsistent_pids = row_meta_metrics.get(
+        "participants_with_inconsistent_specs",
+        row_meta_metrics.get("participants_with_inconsistent_carkw", 0),
+    )
     inconsistent_pct = round(inconsistent_pids / matched_pids * 100.0, 2) if matched_pids else 0.0
 
     total_matched_rows = row_meta_metrics.get("total_matched_transaction_rows", 0)
     charger_matches = row_meta_metrics.get("row_level_charger_matches", 0)
     charger_match_pct = round(charger_matches / total_matched_rows * 100.0, 2) if total_matched_rows else 0.0
 
-    total_parse_failures = ts_metrics.get("start_parse_failures", 0) + ts_metrics.get("stop_parse_failures", 0)
-    parse_success_pct = round((1.0 - (total_parse_failures / (2 * total_tx))) * 100.0, 2) if total_tx else 100.0
+    start_failures = ts_metrics.get("start_parse_failures", 0)
+    stop_failures = ts_metrics.get("stop_parse_failures", 0)
+    total_parse_failures = start_failures + stop_failures
+
+    raw_missing_start = ts_metrics.get("raw_missing_start", ts_metrics.get("missing_start", 0) - start_failures)
+    raw_missing_stop = ts_metrics.get("raw_missing_stop", ts_metrics.get("missing_stop", 0) - stop_failures)
+    total_raw_missing = raw_missing_start + raw_missing_stop
+
+    total_non_missing = (2 * total_tx) - total_raw_missing
+    if total_non_missing > 0:
+        parsed_valid = total_non_missing - total_parse_failures
+        parse_success_pct = round((parsed_valid / total_non_missing) * 100.0, 2)
+        parse_success_str = f"{parse_success_pct:.1f}%"
+    else:
+        parse_success_str = "N/A"
     neg_intervals = ts_metrics.get("negative_intervals", 0)
+
+    non_pos_energy = energy_metrics.get("non_positive_energy", 0)
+    min_pos_energy = energy_metrics.get("min_positive_energy")
+    if non_pos_energy == 0:
+        if min_pos_energy is not None:
+            non_pos_assessment = f"No non-positive readings found (all recorded values are positive, min {min_pos_energy:,.2f} kWh)"
+        else:
+            non_pos_assessment = "No non-positive readings found (all recorded values are positive)"
+    else:
+        non_pos_assessment = f"{non_pos_energy} non-positive energy reading(s) detected (<= 0 kWh)"
+
+    missing_energy_cnt = energy_metrics.get("missing_energy", 0)
+    if missing_energy_cnt == 0:
+        missing_energy_assessment = "No missing energy readings found (all records contain metered energy)"
+    elif missing_energy_cnt == 1:
+        missing_energy_assessment = "Confirmed invalid (1 record lacks meter reading)"
+    else:
+        missing_energy_assessment = f"Confirmed invalid ({missing_energy_cnt} records lack meter reading)"
+
+    scr_initial_pids = screening_metrics["initial_participants"]
+    scr_initial_records = screening_metrics["initial_valid_records"]
+    scr_pids_after_t3 = screening_metrics["participants_after_t3"]
+    scr_records_after_t3 = screening_metrics["remaining_after_t3"]
+    scr_pids_after_short = screening_metrics["participants_after_short"]
+    scr_records_after_short = screening_metrics["remaining_after_short"]
+    scr_pids_after_overlaps = screening_metrics["participants_after_overlaps"]
+    scr_records_after_overlaps = screening_metrics["remaining_after_overlaps"]
+    scr_dropped_first = screening_metrics["dropped_first_sessions"]
+    scr_pids_after_dropped_first = screening_metrics["participants_after_dropped_first"]
+    scr_pids_zero_retained = screening_metrics.get(
+        "participants_zero_retained_after_dropped_first",
+        scr_pids_after_overlaps - scr_pids_after_dropped_first,
+    )
+    scr_retained_sessions = screening_metrics["retained_sessions_total"]
+    scr_pids_lt_10 = screening_metrics["participants_lt_10_retained"]
+    scr_sessions_lt_10 = screening_metrics["sessions_in_lt_10_retained"]
+    scr_pids_before_density = screening_metrics["participants_before_density"]
+    scr_sessions_before_density = screening_metrics["sessions_before_density"]
+    scr_pids_excluded_density = screening_metrics["participants_excluded_density"]
+    scr_sessions_excluded_density = screening_metrics["sessions_excluded_density"]
+    scr_final_pids = screening_metrics["final_eligible_participants"]
+    scr_final_sessions = screening_metrics["final_eligible_sessions"]
 
     report = f"""# TARANG — Initial Dataset Audit Report
 
@@ -1287,7 +1376,7 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Participant Session Overlaps**: {overlap_count:,} overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering {nested_overlap_diff} nested overlaps missed by sequential shift checks).
 - **Energy Quality**: {energy_metrics['energy_gt_100kwh']} records exceed the official Electric Nation 100 kWh implausibility threshold ({energy_metrics['energy_gt_150kwh']} exceed 150 kWh, reaching {max_energy_val:,.2f} kWh), and {energy_metrics['energy_exceeds_carkwh']:,} records exceed their vehicle's rated battery capacity. Exactly {energy_metrics['missing_energy']} record has missing energy.
 - **Charging Duration Discrepancy**: {discrepant_count} record(s) (Transaction ID(s): {discrepant_ids}) exhibit `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
-- **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **{screening_metrics['final_eligible_participants']} participants** and **{screening_metrics['final_eligible_sessions']:,} sessions**.
+- **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **{scr_final_pids} participants** and **{scr_final_sessions:,} sessions**.
 
 ---
 
@@ -1313,7 +1402,7 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
-- Parsing success is {parse_success_pct:.1f}% with {ts_metrics['start_parse_failures']} start parse failures and {ts_metrics['stop_parse_failures']} stop parse failures.
+- Parsing success rate for non-missing raw timestamps is {parse_success_str} ({total_parse_failures} parse failure(s) across {total_non_missing} non-missing timestamp cells; {total_raw_missing} missing cell(s)).
 
 | Timestamp Metric | Start Time (`StartTime`) | Stop Time (`StopTime`) |
 | :--- | :--- | :--- |
@@ -1378,8 +1467,8 @@ Energy consumption readings (`ConsumedkWh`) were evaluated against physical thre
 
 | Metric | Record Count | % of Transactions | Assessment |
 | :--- | :--- | :--- | :--- |
-| Missing Energy | {energy_metrics['missing_energy']} | {energy_metrics['missing_energy_pct']:.4f}% | Confirmed invalid ({energy_metrics['missing_energy']} record(s) lack meter reading) |
-| Non-Positive Energy (`<= 0`) | {energy_metrics['non_positive_energy']} | {energy_metrics['non_positive_energy_pct']:.4f}% | All recorded values are positive (min 0.01 kWh) |
+| Missing Energy | {energy_metrics['missing_energy']} | {energy_metrics['missing_energy_pct']:.4f}% | {missing_energy_assessment} |
+| Non-Positive Energy (`<= 0`) | {energy_metrics['non_positive_energy']} | {energy_metrics['non_positive_energy_pct']:.4f}% | {non_pos_assessment} |
 | Energy > 100 kWh | {energy_metrics['energy_gt_100kwh']} | {energy_metrics['energy_gt_100kwh_pct']:.4f}% | Exceeds official Electric Nation plausibility threshold |
 | Energy > 150 kWh | {energy_metrics['energy_gt_150kwh']} | {energy_metrics['energy_gt_150kwh_pct']:.4f}% | Severe outliers reaching {max_energy_val:,.2f} kWh |
 | Energy > Registered `CarKWh` | {energy_metrics['energy_exceeds_carkwh']:,} | {energy_metrics['energy_exceeds_carkwh_pct']:.4f}% | Records requiring review (requires investigation into telemetry or multi-cycle sessions) |
@@ -1392,20 +1481,20 @@ The planned modeling population screening was executed in strict order:
 
 | Step | Action | Filter / Rule Applied | Participants | Sessions |
 | :---: | :--- | :--- | ---:| ---:|
-| 1 | Baseline Population | Valid ParticipantID and valid timestamps | {screening_metrics['initial_participants']} | {screening_metrics['initial_valid_records']:,} |
-| 2 | Exclude Trial 3 | `Trial != 3.0` | {screening_metrics.get('participants_after_t3', screening_metrics['initial_participants'])} | {screening_metrics['remaining_after_t3']:,} |
-| 3 | Duration Filter | `dur_min >= 5.0` | {screening_metrics.get('participants_after_short', 299)} | {screening_metrics['remaining_after_short']:,} |
-| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | {screening_metrics.get('participants_after_short', 299)} | {screening_metrics['remaining_after_short']:,} |
-| 5 | Overlap Removal | Remove sessions where $\\text{{StartTime}} < \\max(\\text{{StopTime}})$ | {screening_metrics.get('participants_after_overlaps', 299)} | {screening_metrics['remaining_after_overlaps']:,} |
-| 6 | Drop First Session | Lag initialization (drop unlagged first session) | {screening_metrics.get('participants_after_dropped_first', 298)} | {screening_metrics['retained_sessions_total']:,} |
-| 7 | Minimum History Filter | Retain participants with $\\ge 10$ retained sessions | {screening_metrics['participants_before_density']} | {screening_metrics['sessions_before_density']:,} |
-| 8 | Observation-Density Filter | Retain participants where $\\text{{retained\\_sessions}} \\ge \\text{{observation\\_days}} / 7$ | **{screening_metrics['final_eligible_participants']}** | **{screening_metrics['final_eligible_sessions']:,}** |
+| 1 | Baseline Population | Valid ParticipantID and valid timestamps | {scr_initial_pids} | {scr_initial_records:,} |
+| 2 | Exclude Trial 3 | `Trial != 3.0` | {scr_pids_after_t3} | {scr_records_after_t3:,} |
+| 3 | Duration Filter | `dur_min >= 5.0` | {scr_pids_after_short} | {scr_records_after_short:,} |
+| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | {scr_pids_after_short} | {scr_records_after_short:,} |
+| 5 | Overlap Removal | Remove sessions where $\\text{{StartTime}} < \\max(\\text{{StopTime}})$ | {scr_pids_after_overlaps} | {scr_records_after_overlaps:,} |
+| 6 | Drop First Session | Lag initialization (drop unlagged first session) | {scr_pids_after_dropped_first} | {scr_retained_sessions:,} |
+| 7 | Minimum History Filter | Retain participants with $\\ge 10$ retained sessions | {scr_pids_before_density} | {scr_sessions_before_density:,} |
+| 8 | Observation-Density Filter | Retain participants where $\\text{{retained\\_sessions}} \\ge \\text{{observation\\_days}} / 7$ | **{scr_final_pids}** | **{scr_final_sessions:,}** |
 
 ### Screening Transition Details
-- **Step 5 (Overlap Removal)**: Yields {screening_metrics.get('participants_after_overlaps', 299)} participants and {screening_metrics['remaining_after_overlaps']:,} sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes {screening_metrics.get('dropped_first_sessions', 299)} sessions (exactly 1 session per participant). Exactly 1 participant had only a single session, leaving 0 retained sessions for that participant. This leaves **{screening_metrics.get('participants_after_dropped_first', 298)} participants** with at least 1 retained session, totaling **{screening_metrics['retained_sessions_total']:,} retained sessions**.
-- **Step 7 (Minimum History Filter)**: Of these {screening_metrics.get('participants_after_dropped_first', 298)} participants, exactly **{screening_metrics.get('participants_lt_10_retained', 11)} participants** have fewer than 10 retained sessions (accounting for {screening_metrics.get('sessions_in_lt_10_retained', 56)} sessions). The remaining **{screening_metrics['participants_before_density']} participants** ({screening_metrics['sessions_before_density']:,} sessions) pass the minimum-history threshold.
-- **Step 8 (Observation-Density Filter)**: Excludes {screening_metrics['participants_excluded_density']} participants ({screening_metrics['sessions_excluded_density']:,} sessions) whose retained session count is below $\\text{{observation\\_days}} / 7$, yielding the final population of **{screening_metrics['final_eligible_participants']} participants** and **{screening_metrics['final_eligible_sessions']:,} sessions**.
+- **Step 5 (Overlap Removal)**: Yields {scr_pids_after_overlaps} participants and {scr_records_after_overlaps:,} sessions.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes {scr_dropped_first} sessions (one first session per participant after overlap removal). {scr_pids_zero_retained} participant(s) had only a single session, leaving 0 retained sessions. This leaves **{scr_pids_after_dropped_first} participants** with at least 1 retained session, totaling **{scr_retained_sessions:,} retained sessions**.
+- **Step 7 (Minimum History Filter)**: Of these {scr_pids_after_dropped_first} participants, exactly **{scr_pids_lt_10} participants** have fewer than 10 retained sessions (accounting for {scr_sessions_lt_10} sessions). The remaining **{scr_pids_before_density} participants** ({scr_sessions_before_density:,} sessions) pass the minimum-history threshold.
+- **Step 8 (Observation-Density Filter)**: Excludes {scr_pids_excluded_density} participants ({scr_sessions_excluded_density:,} sessions) whose retained session count is below $\\text{{observation\\_days}} / 7$, yielding the final population of **{scr_final_pids} participants** and **{scr_final_sessions:,} sessions**.
 
 ### Observation-Density Results
 - **Before Density Filtering**: {screening_metrics['participants_before_density']} participants, {screening_metrics['sessions_before_density']:,} sessions.
@@ -1457,7 +1546,6 @@ The raw datasets **successfully pass the feasibility audit** for building the TA
 - Data-cleaning rules must eliminate zero-duration sessions ({ts_metrics['zero_intervals']}), extreme duration outliers, energy outliers (> 100 kWh, {energy_metrics['energy_gt_100kwh']}), overlapping records ({overlap_count}), and unattributed records ({unattributed_metrics['total_unattributed_records']:,}).
 - Participant screening yields a robust population of **{screening_metrics['final_eligible_participants']} participants** and **{screening_metrics['final_eligible_sessions']:,} sessions**.
 """
-    return report
     return report
 
 

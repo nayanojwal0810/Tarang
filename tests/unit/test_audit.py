@@ -23,6 +23,9 @@ from tarang.data.audit import (
     detect_duplicates,
     detect_session_overlaps,
     generate_markdown_report,
+    generate_metadata_quality_summary,
+    generate_participant_reconciliation,
+    generate_transaction_quality_summary,
     investigate_unattributed_sessions,
     load_dataset,
     parse_utc_timestamps,
@@ -351,6 +354,7 @@ def test_final_screening_counts_on_real_workbooks() -> None:
     # Step 6: Drop first session
     assert metrics["dropped_first_sessions"] == 299
     assert metrics["participants_after_dropped_first"] == 298
+    assert metrics["participants_zero_retained_after_dropped_first"] == 1
     assert metrics["retained_sessions_total"] == 60276
 
     # Step 7: Minimum history (>=10 retained sessions)
@@ -459,6 +463,7 @@ def test_report_values_change_dynamically_with_metric_changes() -> None:
         "remaining_after_short": 60733, "participants_after_short": 299, "screened_overlaps": 158,
         "remaining_after_overlaps": 60575, "participants_after_overlaps": 299, "dropped_first_sessions": 299,
         "retained_sessions_total": 60276, "participants_after_dropped_first": 298,
+        "participants_zero_retained_after_dropped_first": 1,
         "participants_lt_10_retained": 11, "sessions_in_lt_10_retained": 56,
         "participants_before_density": 287, "sessions_before_density": 60220,
         "participants_excluded_density": 20, "sessions_excluded_density": 726,
@@ -475,11 +480,13 @@ def test_report_values_change_dynamically_with_metric_changes() -> None:
     assert "267 participants" in report_a
     assert "59,494 sessions" in report_a
     assert "160 sessions" in report_a
+    assert "1 participant(s) had only a single session, leaving 0 retained sessions" in report_a
 
     # Metric set B with altered participant count and overlaps
     screening_b = dict(screening_a)
     screening_b["final_eligible_participants"] = 240
     screening_b["final_eligible_sessions"] = 51234
+    screening_b["participants_zero_retained_after_dropped_first"] = 5
     report_b = generate_markdown_report(
         base_tx_meta, base_meta_meta, ts_metrics, unattr_metrics, row_meta_metrics,
         energy_metrics, overlap_count=95, simple_overlap_count=80,
@@ -488,6 +495,7 @@ def test_report_values_change_dynamically_with_metric_changes() -> None:
     assert "240 participants" in report_b
     assert "51,234 sessions" in report_b
     assert "95 sessions" in report_b
+    assert "5 participant(s) had only a single session, leaving 0 retained sessions" in report_b
     assert report_a != report_b
 
 
@@ -528,3 +536,137 @@ def test_feature_feasibility_completeness_and_leakage() -> None:
     # Verify target leakage boundaries
     for _, row in feasibility[feasibility["type"].str.contains("Prediction Target")].iterrows():
         assert "TARGET LEAKAGE" in row["leakage_risk"]
+
+
+def test_screen_participant_history_zero_retained_count() -> None:
+    """Verify that participants_zero_retained_after_dropped_first dynamically counts participants
+    who have no remaining sessions after dropping their earliest session.
+    """
+    base = pd.Timestamp("2017-05-01 10:00:00")
+    df = pd.DataFrame({
+        "TransactionID": [1, 2, 3, 4],
+        "ParticipantID": ["P1", "P2", "P2", "P3"],
+        "StartTime": [base, base, base + pd.Timedelta(hours=5), base],
+        "StopTime": [base + pd.Timedelta(hours=2), base + pd.Timedelta(hours=2), base + pd.Timedelta(hours=7), base + pd.Timedelta(hours=2)],
+        "Trial": [1.0, 1.0, 1.0, 1.0],
+    })
+    metrics = screen_participant_history(df)
+    assert metrics["participants_after_overlaps"] == 3
+    assert metrics["participants_after_dropped_first"] == 1  # Only P2 remains
+    assert metrics["participants_zero_retained_after_dropped_first"] == 2  # P1 and P3 have 0 retained
+
+
+def test_timestamp_parse_success_when_missing_or_malformed() -> None:
+    """Verify parsing success percentage over non-missing raw timestamps,
+    and verify display of 'N/A' when no non-missing timestamps exist.
+    """
+    df = pd.DataFrame({
+        "TransactionID": [1, 2, 3, 4],
+        "StartTime": ["2017-05-01 10:00:00", "2017-05-02 10:00:00", "corrupt-ts", None],
+        "StopTime": ["2017-05-01 12:00:00", "2017-05-02 12:00:00", "2017-05-03 12:00:00", "2017-05-04 12:00:00"],
+    })
+    _, _, ts_metrics = parse_utc_timestamps(df, "StartTime", "StopTime")
+    dummy_meta = {"size_bytes": 100, "sheet_dimensions": {}}
+    dummy_unattr = {"total_unattributed_records": 0, "unattributed_percentage": 0.0, "chargers_involved": 0, "known_chargers_count": 0, "unknown_chargers_count": 0, "unknown_charger_ids": [], "unknown_charger_records": 0, "matched_4field_session_records": 0}
+    dummy_row_meta = {"unique_tx_participants": 1, "unique_meta_participants": 1, "matched_participants": 1, "tx_only_participants": 0, "meta_only_participants": 0, "total_matched_transaction_rows": 4, "row_level_carkw_mismatches": 0, "row_level_carkw_mismatch_pct": 0.0, "row_level_carkwh_mismatches": 0, "row_level_carkwh_mismatch_pct": 0.0, "row_level_charger_matches": 4, "row_level_charger_mismatches": 0, "row_level_charger_mismatch_pct": 0.0, "participants_with_inconsistent_carkw": 0, "participants_with_inconsistent_carkwh": 0, "participants_with_inconsistent_specs": 0}
+    dummy_energy = {"missing_energy": 0, "missing_energy_pct": 0.0, "non_positive_energy": 0, "non_positive_energy_pct": 0.0, "energy_gt_100kwh": 0, "energy_gt_100kwh_pct": 0.0, "energy_gt_150kwh": 0, "energy_gt_150kwh_pct": 0.0, "energy_exceeds_carkwh": 0, "energy_exceeds_carkwh_pct": 0.0, "max_energy": 10.0}
+    dummy_screening = {"initial_participants": 1, "initial_valid_records": 4, "participants_after_t3": 1, "remaining_after_t3": 4, "participants_after_short": 1, "remaining_after_short": 4, "participants_after_overlaps": 1, "remaining_after_overlaps": 4, "dropped_first_sessions": 1, "participants_after_dropped_first": 1, "participants_zero_retained_after_dropped_first": 0, "retained_sessions_total": 3, "participants_lt_10_retained": 0, "sessions_in_lt_10_retained": 0, "participants_before_density": 1, "sessions_before_density": 3, "participants_excluded_density": 0, "sessions_excluded_density": 0, "final_eligible_participants": 1, "final_eligible_sessions": 3, "density_mean_span_days": 10.0, "density_mean_sessions_per_week": 2.0, "density_median_sessions_per_week": 2.0, "density_mean_avg_interval_days": 3.0}
+
+    report = generate_markdown_report(
+        dummy_meta, dummy_meta, ts_metrics, dummy_unattr, dummy_row_meta,
+        dummy_energy, overlap_count=0, simple_overlap_count=0,
+        ch_discrepancy_info={"count": 0, "ids": []}, screening_metrics=dummy_screening, total_tx=4,
+    )
+    assert "85.7%" in report
+
+    # Test display of 'N/A' when 0 non-missing timestamps exist
+    all_missing_df = pd.DataFrame({"StartTime": [None, None], "StopTime": [None, None]})
+    _, _, all_missing_ts = parse_utc_timestamps(all_missing_df, "StartTime", "StopTime")
+    report_na = generate_markdown_report(
+        dummy_meta, dummy_meta, all_missing_ts, dummy_unattr, dummy_row_meta,
+        dummy_energy, overlap_count=0, simple_overlap_count=0,
+        ch_discrepancy_info={"count": 0, "ids": []}, screening_metrics=dummy_screening, total_tx=2,
+    )
+    assert "N/A" in report_na
+
+
+def test_dynamic_energy_quality_report_wording() -> None:
+    """Verify that report text adapts dynamically to positive, non-positive, and missing energy counts."""
+    dummy_meta = {"size_bytes": 100, "sheet_dimensions": {}}
+    dummy_ts = {"start_col": "StartTime", "stop_col": "StopTime", "start_parse_failures": 0, "stop_parse_failures": 0, "missing_start": 0, "missing_stop": 0, "negative_intervals": 0, "negative_intervals_pct": 0.0, "zero_intervals": 0, "zero_intervals_pct": 0.0, "earliest_start": "2017-01-01", "latest_start": "2017-01-02", "earliest_stop": "2017-01-01", "latest_stop": "2017-01-02"}
+    dummy_unattr = {"total_unattributed_records": 0, "unattributed_percentage": 0.0, "chargers_involved": 0, "known_chargers_count": 0, "unknown_chargers_count": 0, "unknown_charger_ids": [], "unknown_charger_records": 0, "matched_4field_session_records": 0}
+    dummy_row_meta = {"unique_tx_participants": 1, "unique_meta_participants": 1, "matched_participants": 1, "tx_only_participants": 0, "meta_only_participants": 0, "total_matched_transaction_rows": 1, "row_level_carkw_mismatches": 0, "row_level_carkw_mismatch_pct": 0.0, "row_level_carkwh_mismatches": 0, "row_level_carkwh_mismatch_pct": 0.0, "row_level_charger_matches": 1, "row_level_charger_mismatches": 0, "row_level_charger_mismatch_pct": 0.0, "participants_with_inconsistent_carkw": 0, "participants_with_inconsistent_carkwh": 0, "participants_with_inconsistent_specs": 0}
+    dummy_screening = {"initial_participants": 1, "initial_valid_records": 1, "participants_after_t3": 1, "remaining_after_t3": 1, "participants_after_short": 1, "remaining_after_short": 1, "participants_after_overlaps": 1, "remaining_after_overlaps": 1, "dropped_first_sessions": 1, "participants_after_dropped_first": 1, "participants_zero_retained_after_dropped_first": 0, "retained_sessions_total": 1, "participants_lt_10_retained": 0, "sessions_in_lt_10_retained": 0, "participants_before_density": 1, "sessions_before_density": 1, "participants_excluded_density": 0, "sessions_excluded_density": 0, "final_eligible_participants": 1, "final_eligible_sessions": 1, "density_mean_span_days": 10.0, "density_mean_sessions_per_week": 2.0, "density_median_sessions_per_week": 2.0, "density_mean_avg_interval_days": 3.0}
+
+    # Case A: non_positive == 0, min_positive == 0.05
+    energy_a = {"missing_energy": 0, "missing_energy_pct": 0.0, "non_positive_energy": 0, "non_positive_energy_pct": 0.0, "energy_gt_100kwh": 0, "energy_gt_100kwh_pct": 0.0, "energy_gt_150kwh": 0, "energy_gt_150kwh_pct": 0.0, "energy_exceeds_carkwh": 0, "energy_exceeds_carkwh_pct": 0.0, "max_energy": 50.0, "min_positive_energy": 0.05}
+    rep_a = generate_markdown_report(dummy_meta, dummy_meta, dummy_ts, dummy_unattr, dummy_row_meta, energy_a, 0, 0, {"count": 0, "ids": []}, dummy_screening, total_tx=1)
+    assert "No non-positive readings found (all recorded values are positive, min 0.05 kWh)" in rep_a
+    assert "No missing energy readings found (all records contain metered energy)" in rep_a
+
+    # Case B: non_positive == 4, missing_energy == 2
+    energy_b = dict(energy_a)
+    energy_b["non_positive_energy"] = 4
+    energy_b["missing_energy"] = 2
+    rep_b = generate_markdown_report(dummy_meta, dummy_meta, dummy_ts, dummy_unattr, dummy_row_meta, energy_b, 0, 0, {"count": 0, "ids": []}, dummy_screening, total_tx=1)
+    assert "4 non-positive energy reading(s) detected (<= 0 kWh)" in rep_b
+    assert "Confirmed invalid (2 records lack meter reading)" in rep_b
+
+    # Case C: missing_energy == 1
+    energy_c = dict(energy_a)
+    energy_c["missing_energy"] = 1
+    rep_c = generate_markdown_report(dummy_meta, dummy_meta, dummy_ts, dummy_unattr, dummy_row_meta, energy_c, 0, 0, {"count": 0, "ids": []}, dummy_screening, total_tx=1)
+    assert "Confirmed invalid (1 record lacks meter reading)" in rep_c
+
+
+def test_combined_vehicle_specification_inconsistency() -> None:
+    """Verify that participants_with_inconsistent_specs correctly unions participants
+    with fluctuating CarKW and CarKWh, without double-counting participants with both.
+    """
+    df_tx = pd.DataFrame({
+        "TransactionID": [1, 2, 3, 4, 5, 6, 7, 8],
+        "ParticipantID": ["P1", "P1", "P2", "P2", "P3", "P3", "P4", "P4"],
+        "CarKW": [3.6, 7.0, 7.0, 7.0, 3.6, 7.0, 7.0, 7.0],  # P1 and P3 change
+        "CarKWh": [33.0, 33.0, 40.0, 60.0, 30.0, 40.0, 50.0, 50.0],  # P2 and P3 change
+        "ChargerID": ["C1"] * 8,
+    })
+    df_meta = pd.DataFrame({
+        "ParticipantID": ["P1", "P2", "P3", "P4"],
+        "CarkW": [7.0, 7.0, 7.0, 7.0],
+        "CarkWh": [33.0, 60.0, 40.0, 50.0],
+        "Charger": ["C1"] * 4,
+        "DCSProvider": ["Crowd Charge"] * 4,
+    })
+    metrics = audit_metadata_row_level(df_tx, df_meta)
+    assert metrics["participants_with_inconsistent_carkw"] == 2  # P1, P3
+    assert metrics["participants_with_inconsistent_carkwh"] == 2  # P2, P3
+    assert metrics["participants_with_inconsistent_specs"] == 3  # P1, P2, P3 (P3 counted once)
+
+    reconcile_df = generate_participant_reconciliation(
+        metrics, df_meta, {"matched_4field_session_records": 0, "unknown_charger_records": 0}, total_tx=8
+    )
+    row = reconcile_df[reconcile_df["metric"] == "Participants with Inconsistent Specifications Across Sessions"].iloc[0]
+    assert row["count"] == 3
+    assert row["percentage"] == 75.0  # 3 out of 4 matched participants
+
+
+def test_empty_dataframe_quality_summary_percentages() -> None:
+    """Verify that generate_transaction_quality_summary and generate_metadata_quality_summary
+    return 0.0% for total records when given an empty DataFrame.
+    """
+    empty_tx = pd.DataFrame(columns=["TransactionID", "ParticipantID", "StartTime", "StopTime", "ConsumedkWh", "CarKW", "CarKWh"])
+    tx_summary = generate_transaction_quality_summary(
+        empty_tx,
+        ts_metrics={"negative_intervals": 0, "zero_intervals": 0, "negative_intervals_pct": 0.0, "zero_intervals_pct": 0.0},
+        unattributed_metrics={"total_unattributed_records": 0, "unattributed_percentage": 0.0, "matched_4field_session_records": 0, "unknown_charger_records": 0},
+        energy_metrics={"missing_energy": 0, "missing_energy_pct": 0.0, "non_positive_energy": 0, "non_positive_energy_pct": 0.0, "energy_gt_100kwh": 0, "energy_gt_100kwh_pct": 0.0, "energy_gt_150kwh": 0, "energy_gt_150kwh_pct": 0.0, "energy_exceeds_carkwh": 0, "energy_exceeds_carkwh_pct": 0.0, "max_energy": 0.0},
+        overlap_count=0,
+        ch_discrepancy_info={"count": 0, "ids": []},
+    )
+    assert tx_summary.iloc[0]["record_count"] == 0
+    assert tx_summary.iloc[0]["percentage"] == 0.0
+
+    empty_meta = pd.DataFrame(columns=["ParticipantID", "Charger", "DCSProvider", "CarKW", "CarKWh"])
+    meta_summary = generate_metadata_quality_summary(empty_meta)
+    assert meta_summary.iloc[0]["record_count"] == 0
+    assert meta_summary.iloc[0]["percentage"] == 0.0
