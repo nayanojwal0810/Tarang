@@ -1,21 +1,27 @@
 """Data audit and processing modules for TARANG."""
 
 from tarang.data.audit import (
-    audit_data_quality,
+    audit_energy_quality,
     audit_feature_feasibility,
-    audit_metadata,
-    audit_transaction_data,
+    audit_metadata_row_level,
+    detect_duplicates,
+    detect_session_overlaps,
     inspect_workbook_metadata,
-    reconcile_participants,
+    investigate_unattributed_sessions,
+    parse_utc_timestamps,
     run_full_audit,
+    screen_participant_history,
 )
 
 __all__ = [
-    "audit_data_quality",
+    "audit_energy_quality",
     "audit_feature_feasibility",
-    "audit_metadata",
-    "audit_transaction_data",
+    "audit_metadata_row_level",
+    "detect_duplicates",
+    "detect_session_overlaps",
     "inspect_workbook_metadata",
-    "reconcile_participants",
+    "investigate_unattributed_sessions",
+    "parse_utc_timestamps",
     "run_full_audit",
+    "screen_participant_history",
 ]

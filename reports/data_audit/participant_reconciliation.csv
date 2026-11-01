@@ -8,5 +8,7 @@ Matched Participants - Crowd Charge Provider,300,100.0,All matched participants 
 Matched Participants - GreenFlux Provider,0,0.0,No GreenFlux participants present in CrowdCharge transactions file
 Unmatched Metadata - GreenFlux Provider,345,92.49,GreenFlux trial data is stored in separate external trial datasets
 Unmatched Metadata - Crowd Charge Provider,28,7.51,Crowd Charge installations with zero recorded sessions in this file
-CarKW Specification Discrepancies,0,0.0,Perfect agreement between transaction CarKW and metadata CarkW
-CarKWh Battery Capacity Discrepancies,0,0.0,Perfect agreement between transaction CarKWh and metadata CarkWh
+Row-Level CarKW Mismatches Across Matched Sessions,0,0.0,"Perfect agreement across all 67,365 matched transaction rows"
+Row-Level CarKWh Mismatches Across Matched Sessions,0,0.0,"Perfect agreement across all 67,365 matched transaction rows"
+Participants with Inconsistent Specifications Across Sessions,0,0.0,0 participants have fluctuating CarKW or CarKWh across their sessions
+Row-Level ChargerID vs Charger Mismatches,0,0.0,100% agreement when string formats are compared
