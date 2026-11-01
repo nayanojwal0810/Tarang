@@ -1027,13 +1027,24 @@ def generate_transaction_quality_summary(
     unknown_chargers_str = ", ".join(map(str, unknown_ids)) if unknown_ids else "None"
     max_energy_val = energy_metrics.get("max_energy", 0.0)
 
+    unique_tx_ids = int(df_tx["TransactionID"].nunique()) if "TransactionID" in df_tx.columns else 0
+    unique_tx_id_pct = round(unique_tx_ids / total * 100.0, 4) if total > 0 else 0.0
+    dup_tx_ids = detect_duplicates(df_tx, subset=["TransactionID"]) if "TransactionID" in df_tx.columns else 0
+    dup_tx_pct = round(dup_tx_ids / total * 100.0, 4) if total > 0 else 0.0
+    dup_rows = detect_duplicates(df_tx)
+    dup_rows_pct = round(dup_rows / total * 100.0, 4) if total > 0 else 0.0
+    unique_pids = int(df_tx["ParticipantID"].dropna().nunique()) if "ParticipantID" in df_tx.columns else 0
+    pid_pct = round(unique_pids / total * 100.0, 4) if total > 0 else 0.0
+    unique_chargers = int(df_tx["ChargerID"].nunique()) if "ChargerID" in df_tx.columns else 0
+    charger_pct = round(unique_chargers / total * 100.0, 4) if total > 0 else 0.0
+
     checks = [
         ("Total Transaction Records", total, 100.0, "Total rows in Transaction Data sheet"),
-        ("Unique Transaction Identifiers", int(df_tx["TransactionID"].nunique()) if "TransactionID" in df_tx.columns else 0, 100.0, "All TransactionID values are distinct primary keys"),
-        ("Duplicate Transaction IDs", detect_duplicates(df_tx, subset=["TransactionID"]) if "TransactionID" in df_tx.columns else 0, round(detect_duplicates(df_tx, subset=["TransactionID"]) / total * 100.0, 4) if total > 0 else 0.0, "Duplicate TransactionID values"),
-        ("Duplicate Complete Rows", detect_duplicates(df_tx), round(detect_duplicates(df_tx) / total * 100.0, 4) if total > 0 else 0.0, "Full duplicate rows"),
-        ("Unique Participant Identifiers", int(df_tx["ParticipantID"].dropna().nunique()) if "ParticipantID" in df_tx.columns else 0, round(int(df_tx["ParticipantID"].dropna().nunique()) / total * 100.0, 4) if total > 0 else 0.0, "Unique non-null participants"),
-        ("Unique Charger Identifiers", int(df_tx["ChargerID"].nunique()) if "ChargerID" in df_tx.columns else 0, round(int(df_tx["ChargerID"].nunique()) / total * 100.0, 4) if total > 0 else 0.0, "Unique physical chargers"),
+        ("Unique Transaction Identifiers", unique_tx_ids, unique_tx_id_pct, f"{unique_tx_ids:,} distinct primary keys in Transaction Data ({unique_tx_id_pct:.2f}% uniqueness)"),
+        ("Duplicate Transaction IDs", dup_tx_ids, dup_tx_pct, "Duplicate TransactionID values"),
+        ("Duplicate Complete Rows", dup_rows, dup_rows_pct, "Full duplicate rows"),
+        ("Unique Participant Identifiers", unique_pids, pid_pct, "Unique non-null participants"),
+        ("Unique Charger Identifiers", unique_chargers, charger_pct, "Unique physical chargers"),
         ("Missing ParticipantID", unattributed_metrics["total_unattributed_records"], unattributed_metrics["unattributed_percentage"], f"Unattributed sessions ({unattributed_metrics['matched_4field_session_records']} records match known participant sessions on the four session fields; other transaction fields may differ; {unattributed_metrics['unknown_charger_records']} belong to unregistered charger {unknown_chargers_str})"),
         ("Missing CarKW / CarKWh", int(df_tx["CarKW"].isnull().sum()) if "CarKW" in df_tx.columns else 0, round(int(df_tx["CarKW"].isnull().sum()) / total * 100.0, 4) if total > 0 else 0.0, "Vehicle specification missingness in transactions"),
         ("Missing ConsumedkWh", energy_metrics["missing_energy"], energy_metrics["missing_energy_pct"], f"Records with missing metered electrical energy ({energy_metrics['missing_energy']} record(s))"),
@@ -1070,12 +1081,14 @@ def generate_metadata_quality_summary(df_meta: pd.DataFrame) -> pd.DataFrame:
     total = len(df_meta)
     dup_pids = detect_duplicates(df_meta, subset=["ParticipantID"]) if "ParticipantID" in df_meta.columns else 0
     dup_rows = detect_duplicates(df_meta)
-
     missing_by_col = df_meta.isnull().sum()
+
+    unique_pids = int(df_meta["ParticipantID"].nunique()) if "ParticipantID" in df_meta.columns else 0
+    unique_pid_pct = round(unique_pids / total * 100.0, 4) if total > 0 else 0.0
 
     checks = [
         ("Total Records", total, 100.0, "Total installation records in sheet 20181126_ChargerInstall_DriveEl"),
-        ("Unique Participant IDs", int(df_meta["ParticipantID"].nunique()) if "ParticipantID" in df_meta.columns else 0, 100.0, "Participant identifiers completeness and uniqueness"),
+        ("Unique Participant IDs", unique_pids, unique_pid_pct, f"{unique_pids} distinct participant identifiers in metadata ({unique_pid_pct:.2f}% uniqueness)"),
         ("Duplicate Participant IDs", dup_pids, round(dup_pids / total * 100.0, 4) if total > 0 else 0.0, "Duplicate ParticipantIDs"),
         ("Duplicate Complete Rows", dup_rows, round(dup_rows / total * 100.0, 4) if total > 0 else 0.0, "Duplicate rows"),
         ("Missing ParticipantID", int(missing_by_col.get("ParticipantID", 0)), round(int(missing_by_col.get("ParticipantID", 0)) / total * 100.0, 4) if total > 0 else 0.0, "ParticipantID completeness"),
@@ -1135,20 +1148,33 @@ def generate_participant_reconciliation(
     unknown_ids = unattributed_metrics.get("unknown_charger_ids", [])
     unknown_chargers_str = ", ".join(map(str, unknown_ids)) if unknown_ids else "None"
 
+    matched_pct = round(matched_pids / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
+    tx_only_pct = round(tx_only / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
+    meta_only_pct = round(meta_only / total_meta_pids * 100.0, 2) if total_meta_pids else 0.0
+    inconsistent_pids = row_meta_metrics.get("participants_with_inconsistent_carkw", 0)
+    inconsistent_pct = round(inconsistent_pids / matched_pids * 100.0, 2) if matched_pids else 0.0
+
+    carkw_mismatches = row_meta_metrics.get("row_level_carkw_mismatches", 0)
+    carkwh_mismatches = row_meta_metrics.get("row_level_carkwh_mismatches", 0)
+    carkw_mismatch_pct = row_meta_metrics.get("row_level_carkw_mismatch_pct", 0.0)
+    carkwh_mismatch_pct = row_meta_metrics.get("row_level_carkwh_mismatch_pct", 0.0)
+    charger_mismatches = row_meta_metrics.get("row_level_charger_mismatches", 0)
+    charger_mismatch_pct = row_meta_metrics.get("row_level_charger_mismatch_pct", 0.0)
+
     records = [
         {"metric": "Unique Participants in Transactions (Non-null)", "count": total_tx_pids, "percentage": 100.0 if total_tx_pids else 0.0, "notes": "Distinct participant IDs appearing in transaction records"},
         {"metric": "Unique Participants in Metadata", "count": total_meta_pids, "percentage": 100.0 if total_meta_pids else 0.0, "notes": "Total installed charger participants in metadata"},
-        {"metric": "Matched Participants (Present in Both)", "count": matched_pids, "percentage": round(matched_pids / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0, "notes": "100% of transaction participants are identified in metadata"},
-        {"metric": "Transaction Participants Missing from Metadata", "count": tx_only, "percentage": round(tx_only / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0, "notes": "No unknown participant IDs present in transactions"},
-        {"metric": "Metadata Participants Missing from Transactions", "count": meta_only, "percentage": round(meta_only / total_meta_pids * 100.0, 2) if total_meta_pids else 0.0, "notes": f"Metadata records without transactions ({greenflux_unmatched} GreenFlux, {crowdcharge_unmatched} Crowd Charge)"},
+        {"metric": "Matched Participants (Present in Both)", "count": matched_pids, "percentage": matched_pct, "notes": f"{matched_pct:.1f}% of transaction participants are identified in metadata ({matched_pids}/{total_tx_pids})"},
+        {"metric": "Transaction Participants Missing from Metadata", "count": tx_only, "percentage": tx_only_pct, "notes": f"{tx_only} transaction participant(s) not found in metadata registry"},
+        {"metric": "Metadata Participants Missing from Transactions", "count": meta_only, "percentage": meta_only_pct, "notes": f"Metadata records without transactions ({greenflux_unmatched} GreenFlux, {crowdcharge_unmatched} Crowd Charge)"},
         {"metric": "Matched Participants - Crowd Charge Provider", "count": crowdcharge_matched, "percentage": round(crowdcharge_matched / matched_pids * 100.0, 2) if matched_pids else 0.0, "notes": "Matched participants belonging to Crowd Charge provider"},
         {"metric": "Matched Participants - GreenFlux Provider", "count": greenflux_matched, "percentage": round(greenflux_matched / matched_pids * 100.0, 2) if matched_pids else 0.0, "notes": "Matched participants belonging to GreenFlux provider"},
         {"metric": "Unmatched Metadata - GreenFlux Provider", "count": greenflux_unmatched, "percentage": round(greenflux_unmatched / meta_only * 100.0, 2) if meta_only else 0.0, "notes": "GreenFlux trial data is stored in separate external trial datasets"},
         {"metric": "Unmatched Metadata - Crowd Charge Provider", "count": crowdcharge_unmatched, "percentage": round(crowdcharge_unmatched / meta_only * 100.0, 2) if meta_only else 0.0, "notes": "Crowd Charge installations with zero recorded sessions in this file"},
-        {"metric": "Row-Level CarKW Mismatches Across Matched Sessions", "count": row_meta_metrics["row_level_carkw_mismatches"], "percentage": row_meta_metrics["row_level_carkw_mismatch_pct"], "notes": "Agreement across matched transaction rows"},
-        {"metric": "Row-Level CarKWh Mismatches Across Matched Sessions", "count": row_meta_metrics["row_level_carkwh_mismatches"], "percentage": row_meta_metrics["row_level_carkwh_mismatch_pct"], "notes": "Agreement across matched transaction rows"},
-        {"metric": "Participants with Inconsistent Specifications Across Sessions", "count": row_meta_metrics["participants_with_inconsistent_carkw"], "percentage": 0.0, "notes": "Participants with fluctuating CarKW or CarKWh across their sessions"},
-        {"metric": "Row-Level ChargerID vs Charger Mismatches", "count": row_meta_metrics["row_level_charger_mismatches"], "percentage": row_meta_metrics["row_level_charger_mismatch_pct"], "notes": "Agreement when string formats are compared"},
+        {"metric": "Row-Level CarKW Mismatches Across Matched Sessions", "count": carkw_mismatches, "percentage": carkw_mismatch_pct, "notes": f"{100.0 - carkw_mismatch_pct:.2f}% agreement across matched transaction rows ({carkw_mismatches} mismatches)"},
+        {"metric": "Row-Level CarKWh Mismatches Across Matched Sessions", "count": carkwh_mismatches, "percentage": carkwh_mismatch_pct, "notes": f"{100.0 - carkwh_mismatch_pct:.2f}% agreement across matched transaction rows ({carkwh_mismatches} mismatches)"},
+        {"metric": "Participants with Inconsistent Specifications Across Sessions", "count": inconsistent_pids, "percentage": inconsistent_pct, "notes": f"{inconsistent_pids} participant(s) with fluctuating CarKW or CarKWh across sessions"},
+        {"metric": "Row-Level ChargerID vs Charger Mismatches", "count": charger_mismatches, "percentage": charger_mismatch_pct, "notes": f"{100.0 - charger_mismatch_pct:.2f}% agreement when string formats are compared ({charger_mismatches} mismatches)"},
         {"metric": "Unattributed Sessions Matching Known Sessions on 4 Fields", "count": unattributed_metrics["matched_4field_session_records"], "percentage": round(unattributed_metrics["matched_4field_session_records"] / total_tx * 100.0, 2) if total_tx else 0.0, "notes": "These records match known participant sessions on ChargerID, StartTime, StopTime, ConsumedkWh; other transaction fields may differ"},
         {"metric": "Unattributed Sessions on Unregistered Charger", "count": unattributed_metrics["unknown_charger_records"], "percentage": round(unattributed_metrics["unknown_charger_records"] / total_tx * 100.0, 2) if total_tx else 0.0, "notes": f"Records associated with unregistered charger {unknown_chargers_str} absent from metadata"},
     ]
@@ -1168,6 +1194,8 @@ def generate_markdown_report(
     ch_discrepancy_info: Dict[str, Any],
     screening_metrics: Dict[str, Any],
     total_tx: int,
+    dup_tx_ids: int = 0,
+    dup_tx_rows: int = 0,
 ) -> str:
     """Generate the complete, readable Markdown audit report dynamically from calculated results.
 
@@ -1183,6 +1211,8 @@ def generate_markdown_report(
         ch_discrepancy_info: Charging duration discrepancy info.
         screening_metrics: Participant screening metrics.
         total_tx: Total transaction record count.
+        dup_tx_ids: Count of duplicate TransactionID records.
+        dup_tx_rows: Count of full duplicate rows.
 
     Returns:
         Markdown string representing the complete audit report.
@@ -1198,6 +1228,36 @@ def generate_markdown_report(
     unknown_ids = unattributed_metrics.get("unknown_charger_ids", [])
     unknown_chargers_str = ", ".join(map(str, unknown_ids)) if unknown_ids else "None"
     max_energy_val = energy_metrics.get("max_energy", 0.0)
+
+    matched_pids = row_meta_metrics["matched_participants"]
+    total_tx_pids = row_meta_metrics["unique_tx_participants"]
+    matched_pct = round(matched_pids / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
+    matched_providers = row_meta_metrics.get("matched_providers", {})
+    provider_str = ", ".join(f"{cnt} {prov}" for prov, cnt in matched_providers.items()) if matched_providers else "none"
+
+    carkw_mismatches = row_meta_metrics.get("row_level_carkw_mismatches", 0)
+    carkwh_mismatches = row_meta_metrics.get("row_level_carkwh_mismatches", 0)
+    carkw_mismatch_pct = row_meta_metrics.get("row_level_carkw_mismatch_pct", 0.0)
+    carkwh_mismatch_pct = row_meta_metrics.get("row_level_carkwh_mismatch_pct", 0.0)
+    carkw_agree_pct = 100.0 - carkw_mismatch_pct
+    carkwh_agree_pct = 100.0 - carkwh_mismatch_pct
+
+    tx_only_pids = row_meta_metrics.get("tx_only_participants", 0)
+    tx_only_pct = round(tx_only_pids / total_tx_pids * 100.0, 2) if total_tx_pids else 0.0
+    meta_pids = row_meta_metrics.get("unique_meta_participants", 0)
+    meta_only_pids = row_meta_metrics.get("meta_only_participants", 0)
+    meta_only_pct = round(meta_only_pids / meta_pids * 100.0, 2) if meta_pids else 0.0
+
+    inconsistent_pids = row_meta_metrics.get("participants_with_inconsistent_carkw", 0)
+    inconsistent_pct = round(inconsistent_pids / matched_pids * 100.0, 2) if matched_pids else 0.0
+
+    total_matched_rows = row_meta_metrics.get("total_matched_transaction_rows", 0)
+    charger_matches = row_meta_metrics.get("row_level_charger_matches", 0)
+    charger_match_pct = round(charger_matches / total_matched_rows * 100.0, 2) if total_matched_rows else 0.0
+
+    total_parse_failures = ts_metrics.get("start_parse_failures", 0) + ts_metrics.get("stop_parse_failures", 0)
+    parse_success_pct = round((1.0 - (total_parse_failures / (2 * total_tx))) * 100.0, 2) if total_tx else 100.0
+    neg_intervals = ts_metrics.get("negative_intervals", 0)
 
     report = f"""# TARANG — Initial Dataset Audit Report
 
@@ -1221,8 +1281,8 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Timestamp Standard**: All raw timestamps are verified and treated as **UTC-aware timestamps** without shifting their recorded clock values.
 - **Transaction Coverage**: {total_tx:,} transaction records spanning from {ts_metrics['earliest_start']} to {ts_metrics['latest_stop']} UTC.
 - **Participant Coverage**: {row_meta_metrics['unique_tx_participants']} distinct non-null participants in transactions and {row_meta_metrics['unique_meta_participants']} participants in vehicle metadata.
-- **Reconciliation**: 100% ({row_meta_metrics['matched_participants']}/{row_meta_metrics['unique_tx_participants']}) of non-null transaction participants match metadata records (all belong to the Crowd Charge DCS provider). Row-level checks across all {row_meta_metrics['total_matched_transaction_rows']:,} matched records confirm 0 mismatches for `CarKW` and `CarKWh`.
-- **Data Quality Invariants**: Zero negative timestamp intervals (`StopTime < StartTime`), zero duplicate primary keys (`TransactionID`), and zero full-row duplicates.
+- **Reconciliation**: {matched_pct:.1f}% ({matched_pids}/{total_tx_pids}) of non-null transaction participants match metadata records ({provider_str}). Row-level checks across all {total_matched_rows:,} matched records confirm {carkw_mismatches} mismatches for `CarKW` and {carkwh_mismatches} mismatches for `CarKWh`.
+- **Data Quality Invariants**: {neg_intervals} negative timestamp intervals (`StopTime < StartTime`), {dup_tx_ids} duplicate primary keys (`TransactionID`), and {dup_tx_rows} full-row duplicates.
 - **Unattributed Sessions**: {unattributed_metrics['total_unattributed_records']:,} records ({unattributed_metrics['unattributed_percentage']}%) lack `ParticipantID`. Natural-session matching confirms {unattributed_metrics['matched_4field_session_records']:,} records match known participant sessions on the four session fields (`ChargerID, StartTime, StopTime, ConsumedkWh`), while {unattributed_metrics['unknown_charger_records']} records belong to an unregistered charger ({unknown_chargers_str}).
 - **Participant Session Overlaps**: {overlap_count:,} overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering {nested_overlap_diff} nested overlaps missed by sequential shift checks).
 - **Energy Quality**: {energy_metrics['energy_gt_100kwh']} records exceed the official Electric Nation 100 kWh implausibility threshold ({energy_metrics['energy_gt_150kwh']} exceed 150 kWh, reaching {max_energy_val:,.2f} kWh), and {energy_metrics['energy_exceeds_carkwh']:,} records exceed their vehicle's rated battery capacity. Exactly {energy_metrics['missing_energy']} record has missing energy.
@@ -1253,7 +1313,7 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
-- Parsing success is 100.0% with {ts_metrics['start_parse_failures']} start parse failures and {ts_metrics['stop_parse_failures']} stop parse failures.
+- Parsing success is {parse_success_pct:.1f}% with {ts_metrics['start_parse_failures']} start parse failures and {ts_metrics['stop_parse_failures']} stop parse failures.
 
 | Timestamp Metric | Start Time (`StartTime`) | Stop Time (`StopTime`) |
 | :--- | :--- | :--- |
@@ -1275,7 +1335,7 @@ A rigorous natural-session matching investigation was conducted on the {unattrib
 - **Chargers Represented**: {unattributed_metrics['chargers_involved']} physical chargers appear in the unattributed records.
   - **{unattributed_metrics['known_chargers_count']} chargers** exist in `ChargerInstall.xlsx` as valid participant installations.
   - **{unattributed_metrics['unknown_chargers_count']} charger** ({unknown_chargers_str}) does NOT exist in `ChargerInstall.xlsx`.
-- **Natural Session Matching**: Using the matching key `(ChargerID, StartTime, StopTime, ConsumedkWh)` against the {row_meta_metrics['total_matched_transaction_rows']:,} known participant transactions:
+- **Natural Session Matching**: Using the matching key `(ChargerID, StartTime, StopTime, ConsumedkWh)` against the {total_matched_rows:,} known participant transactions:
   - **{unattributed_metrics['matched_4field_session_records']:,} records** match known participant sessions on the four session fields. Other transaction fields may differ.
   - **{unattributed_metrics['unknown_charger_records']} records** belong to the unregistered charger ({unknown_chargers_str}) and cannot be attributed to any trial participant.
 
@@ -1296,19 +1356,19 @@ $$\\text{{Overlap Condition: }} \\text{{StartTime}}_i < \\max_{{j < i}} (\\text{
 
 ## 6. Row-Level Metadata Reconciliation
 
-A row-level reconciliation was performed across all {row_meta_metrics['total_matched_transaction_rows']:,} matched transaction records against `ChargerInstall.xlsx`:
+A row-level reconciliation was performed across all {total_matched_rows:,} matched transaction records against `ChargerInstall.xlsx`:
 
 | Reconciliation Check | Count | Percentage | Status |
 | :--- | :--- | :--- | :--- |
-| Unique Participants in Transactions | {row_meta_metrics['unique_tx_participants']} | 100.00% | Non-null participant IDs |
-| Unique Participants in Metadata | {row_meta_metrics['unique_meta_participants']} | 100.00% | Total trial participants across DCS providers |
-| Matched Participants (Both Datasets) | {row_meta_metrics['matched_participants']} | 100.00% | 100% of transaction participants match |
-| Unmatched Transaction Participants | {row_meta_metrics['tx_only_participants']} | 0.00% | Zero unknown participant IDs |
-| Unmatched Metadata Participants | {row_meta_metrics['meta_only_participants']} | {round(row_meta_metrics['meta_only_participants'] / row_meta_metrics['unique_meta_participants'] * 100.0, 2)}% | Metadata records without transactions |
-| Row-Level `CarKW` Mismatches | {row_meta_metrics['row_level_carkw_mismatches']} | {row_meta_metrics['row_level_carkw_mismatch_pct']:.4f}% | 100% agreement across all matched rows |
-| Row-Level `CarKWh` Mismatches | {row_meta_metrics['row_level_carkwh_mismatches']} | {row_meta_metrics['row_level_carkwh_mismatch_pct']:.4f}% | 100% agreement across all matched rows |
-| Inconsistent Vehicle Specs per Participant | {row_meta_metrics['participants_with_inconsistent_carkw']} | 0.00% | Specifications are invariant per participant |
-| Row-Level `ChargerID` vs `Charger` Matches | {row_meta_metrics['row_level_charger_matches']:,} | 100.00% | Formats match when compared as strings |
+| Unique Participants in Transactions | {total_tx_pids} | 100.00% | Non-null participant IDs |
+| Unique Participants in Metadata | {meta_pids} | 100.00% | Total trial participants across DCS providers |
+| Matched Participants (Both Datasets) | {matched_pids} | {matched_pct:.2f}% | {matched_pct:.1f}% of transaction participants match |
+| Unmatched Transaction Participants | {tx_only_pids} | {tx_only_pct:.2f}% | {tx_only_pids} unknown participant IDs |
+| Unmatched Metadata Participants | {meta_only_pids} | {meta_only_pct:.2f}% | Metadata records without transactions |
+| Row-Level `CarKW` Mismatches | {carkw_mismatches} | {carkw_mismatch_pct:.4f}% | {carkw_agree_pct:.2f}% agreement across all matched rows |
+| Row-Level `CarKWh` Mismatches | {carkwh_mismatches} | {carkwh_mismatch_pct:.4f}% | {carkwh_agree_pct:.2f}% agreement across all matched rows |
+| Inconsistent Vehicle Specs per Participant | {inconsistent_pids} | {inconsistent_pct:.2f}% | {inconsistent_pids} participants with fluctuating specs |
+| Row-Level `ChargerID` vs `Charger` Matches | {charger_matches:,} | {charger_match_pct:.2f}% | Formats match when compared as strings |
 
 ---
 
@@ -1337,9 +1397,15 @@ The planned modeling population screening was executed in strict order:
 | 3 | Duration Filter | `dur_min >= 5.0` | {screening_metrics.get('participants_after_short', 299)} | {screening_metrics['remaining_after_short']:,} |
 | 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | {screening_metrics.get('participants_after_short', 299)} | {screening_metrics['remaining_after_short']:,} |
 | 5 | Overlap Removal | Remove sessions where $\\text{{StartTime}} < \\max(\\text{{StopTime}})$ | {screening_metrics.get('participants_after_overlaps', 299)} | {screening_metrics['remaining_after_overlaps']:,} |
-| 6 | Drop First Session | Lag initialization (drop unlagged first session) | {screening_metrics.get('participants_after_dropped_first', 299)} | {screening_metrics['retained_sessions_total']:,} |
+| 6 | Drop First Session | Lag initialization (drop unlagged first session) | {screening_metrics.get('participants_after_dropped_first', 298)} | {screening_metrics['retained_sessions_total']:,} |
 | 7 | Minimum History Filter | Retain participants with $\\ge 10$ retained sessions | {screening_metrics['participants_before_density']} | {screening_metrics['sessions_before_density']:,} |
 | 8 | Observation-Density Filter | Retain participants where $\\text{{retained\\_sessions}} \\ge \\text{{observation\\_days}} / 7$ | **{screening_metrics['final_eligible_participants']}** | **{screening_metrics['final_eligible_sessions']:,}** |
+
+### Screening Transition Details
+- **Step 5 (Overlap Removal)**: Yields {screening_metrics.get('participants_after_overlaps', 299)} participants and {screening_metrics['remaining_after_overlaps']:,} sessions.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes {screening_metrics.get('dropped_first_sessions', 299)} sessions (exactly 1 session per participant). Exactly 1 participant had only a single session, leaving 0 retained sessions for that participant. This leaves **{screening_metrics.get('participants_after_dropped_first', 298)} participants** with at least 1 retained session, totaling **{screening_metrics['retained_sessions_total']:,} retained sessions**.
+- **Step 7 (Minimum History Filter)**: Of these {screening_metrics.get('participants_after_dropped_first', 298)} participants, exactly **{screening_metrics.get('participants_lt_10_retained', 11)} participants** have fewer than 10 retained sessions (accounting for {screening_metrics.get('sessions_in_lt_10_retained', 56)} sessions). The remaining **{screening_metrics['participants_before_density']} participants** ({screening_metrics['sessions_before_density']:,} sessions) pass the minimum-history threshold.
+- **Step 8 (Observation-Density Filter)**: Excludes {screening_metrics['participants_excluded_density']} participants ({screening_metrics['sessions_excluded_density']:,} sessions) whose retained session count is below $\\text{{observation\\_days}} / 7$, yielding the final population of **{screening_metrics['final_eligible_participants']} participants** and **{screening_metrics['final_eligible_sessions']:,} sessions**.
 
 ### Observation-Density Results
 - **Before Density Filtering**: {screening_metrics['participants_before_density']} participants, {screening_metrics['sessions_before_density']:,} sessions.
@@ -1385,12 +1451,13 @@ The following fields occur post-arrival and are strictly excluded from predictor
 
 The raw datasets **successfully pass the feasibility audit** for building the TARANG EV Charging Intelligence System, subject to the documented preprocessing pipeline:
 - Complete, high-precision UTC-aware timestamps.
-- 100% metadata concordance across all {row_meta_metrics['matched_participants']} active trial participants.
+- {matched_pct:.1f}% metadata concordance across all {matched_pids} active trial participants.
 - The dual prediction targets (plugged-in duration capped at 336 hours and energy consumption) can be constructed reliably.
 - All 13 planned features are feasible without target leakage.
 - Data-cleaning rules must eliminate zero-duration sessions ({ts_metrics['zero_intervals']}), extreme duration outliers, energy outliers (> 100 kWh, {energy_metrics['energy_gt_100kwh']}), overlapping records ({overlap_count}), and unattributed records ({unattributed_metrics['total_unattributed_records']:,}).
 - Participant screening yields a robust population of **{screening_metrics['final_eligible_participants']} participants** and **{screening_metrics['final_eligible_sessions']:,} sessions**.
 """
+    return report
     return report
 
 
@@ -1477,6 +1544,8 @@ def run_full_audit(
     df_reconcile.to_csv(reconcile_csv, index=False)
 
     logger.info("Generating dynamic Markdown audit report...")
+    dup_tx_ids = detect_duplicates(df_tx, subset=["TransactionID"]) if "TransactionID" in df_tx.columns else 0
+    dup_tx_rows = detect_duplicates(df_tx)
     report_md = generate_markdown_report(
         tx_meta=tx_meta,
         meta_meta=meta_meta,
@@ -1489,6 +1558,8 @@ def run_full_audit(
         ch_discrepancy_info=ch_discrepancy_info,
         screening_metrics=screening_metrics,
         total_tx=total_tx,
+        dup_tx_ids=dup_tx_ids,
+        dup_tx_rows=dup_tx_rows,
     )
     report_file = reports_path / "dataset_audit_report.md"
     report_file.write_text(report_md, encoding="utf-8")

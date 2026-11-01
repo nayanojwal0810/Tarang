@@ -20,8 +20,8 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Timestamp Standard**: All raw timestamps are verified and treated as **UTC-aware timestamps** without shifting their recorded clock values.
 - **Transaction Coverage**: 71,264 transaction records spanning from 2017-03-01 19:55:00+00:00 to 2019-01-01 21:52:00+00:00 UTC.
 - **Participant Coverage**: 300 distinct non-null participants in transactions and 673 participants in vehicle metadata.
-- **Reconciliation**: 100% (300/300) of non-null transaction participants match metadata records (all belong to the Crowd Charge DCS provider). Row-level checks across all 67,365 matched records confirm 0 mismatches for `CarKW` and `CarKWh`.
-- **Data Quality Invariants**: Zero negative timestamp intervals (`StopTime < StartTime`), zero duplicate primary keys (`TransactionID`), and zero full-row duplicates.
+- **Reconciliation**: 100.0% (300/300) of non-null transaction participants match metadata records (300 Crowd Charge). Row-level checks across all 67,365 matched records confirm 0 mismatches for `CarKW` and 0 mismatches for `CarKWh`.
+- **Data Quality Invariants**: 0 negative timestamp intervals (`StopTime < StartTime`), 0 duplicate primary keys (`TransactionID`), and 0 full-row duplicates.
 - **Unattributed Sessions**: 3,899 records (5.4712%) lack `ParticipantID`. Natural-session matching confirms 3,774 records match known participant sessions on the four session fields (`ChargerID, StartTime, StopTime, ConsumedkWh`), while 125 records belong to an unregistered charger (4441003917).
 - **Participant Session Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering 27 nested overlaps missed by sequential shift checks).
 - **Energy Quality**: 20 records exceed the official Electric Nation 100 kWh implausibility threshold (12 exceed 150 kWh, reaching 37,487.88 kWh), and 1,788 records exceed their vehicle's rated battery capacity. Exactly 1 record has missing energy.
@@ -101,12 +101,12 @@ A row-level reconciliation was performed across all 67,365 matched transaction r
 | :--- | :--- | :--- | :--- |
 | Unique Participants in Transactions | 300 | 100.00% | Non-null participant IDs |
 | Unique Participants in Metadata | 673 | 100.00% | Total trial participants across DCS providers |
-| Matched Participants (Both Datasets) | 300 | 100.00% | 100% of transaction participants match |
-| Unmatched Transaction Participants | 0 | 0.00% | Zero unknown participant IDs |
+| Matched Participants (Both Datasets) | 300 | 100.00% | 100.0% of transaction participants match |
+| Unmatched Transaction Participants | 0 | 0.00% | 0 unknown participant IDs |
 | Unmatched Metadata Participants | 373 | 55.42% | Metadata records without transactions |
-| Row-Level `CarKW` Mismatches | 0 | 0.0000% | 100% agreement across all matched rows |
-| Row-Level `CarKWh` Mismatches | 0 | 0.0000% | 100% agreement across all matched rows |
-| Inconsistent Vehicle Specs per Participant | 0 | 0.00% | Specifications are invariant per participant |
+| Row-Level `CarKW` Mismatches | 0 | 0.0000% | 100.00% agreement across all matched rows |
+| Row-Level `CarKWh` Mismatches | 0 | 0.0000% | 100.00% agreement across all matched rows |
+| Inconsistent Vehicle Specs per Participant | 0 | 0.00% | 0 participants with fluctuating specs |
 | Row-Level `ChargerID` vs `Charger` Matches | 67,365 | 100.00% | Formats match when compared as strings |
 
 ---
@@ -139,6 +139,12 @@ The planned modeling population screening was executed in strict order:
 | 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,276 |
 | 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,220 |
 | 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | **267** | **59,494** |
+
+### Screening Transition Details
+- **Step 5 (Overlap Removal)**: Yields 299 participants and 60,575 sessions.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (exactly 1 session per participant). Exactly 1 participant had only a single session, leaving 0 retained sessions for that participant. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
+- **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **11 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,220 sessions) pass the minimum-history threshold.
+- **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,494 sessions**.
 
 ### Observation-Density Results
 - **Before Density Filtering**: 287 participants, 60,220 sessions.
@@ -184,7 +190,7 @@ The following fields occur post-arrival and are strictly excluded from predictor
 
 The raw datasets **successfully pass the feasibility audit** for building the TARANG EV Charging Intelligence System, subject to the documented preprocessing pipeline:
 - Complete, high-precision UTC-aware timestamps.
-- 100% metadata concordance across all 300 active trial participants.
+- 100.0% metadata concordance across all 300 active trial participants.
 - The dual prediction targets (plugged-in duration capped at 336 hours and energy consumption) can be constructed reliably.
 - All 13 planned features are feasible without target leakage.
 - Data-cleaning rules must eliminate zero-duration sessions (92), extreme duration outliers, energy outliers (> 100 kWh, 20), overlapping records (160), and unattributed records (3,899).

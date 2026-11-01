@@ -94,6 +94,21 @@ cd Tarang
 pip install -r requirements.txt
 ```
 
+### Raw Data Setup
+
+The TARANG dataset audit relies on empirical smart charging records from the UK **Electric Nation** trial (funded by Western Power Distribution / National Grid Electricity Distribution and delivered by EA Technology and DriveElectric).
+
+To run the audit locally, place the two raw Excel workbooks into the project raw directory:
+
+- **Target Directory**: `data/raw/electric_nation/`
+- **Required Workbooks & Sheets**:
+  1. `CrowdCharge Transactions.xlsx`
+     - Required sheet: `Transaction Data` (71,264 rows $\times$ 28 columns)
+  2. `ChargerInstall.xlsx`
+     - Required sheet: `20181126_ChargerInstall_DriveEl` (673 rows $\times$ 10 columns)
+
+> **Note**: The raw Excel workbooks contain participant-level trial records and are excluded from Git version control via `.gitignore`. Do not commit raw workbooks to the repository.
+
 ### Running the Data Audit
 
 To execute the complete audit, generate all CSV deliverables, and dynamically compile the Markdown report:

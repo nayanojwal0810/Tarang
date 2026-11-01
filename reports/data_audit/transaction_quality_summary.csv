@@ -1,6 +1,6 @@
 check_name,record_count,percentage,description
 Total Transaction Records,71264,100.0,Total rows in Transaction Data sheet
-Unique Transaction Identifiers,71264,100.0,All TransactionID values are distinct primary keys
+Unique Transaction Identifiers,71264,100.0,"71,264 distinct primary keys in Transaction Data (100.00% uniqueness)"
 Duplicate Transaction IDs,0,0.0,Duplicate TransactionID values
 Duplicate Complete Rows,0,0.0,Full duplicate rows
 Unique Participant Identifiers,300,0.421,Unique non-null participants

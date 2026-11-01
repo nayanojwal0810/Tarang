@@ -244,20 +244,22 @@ def test_energy_quality_thresholds() -> None:
 def test_density_rule_participant_fails_minimum_density() -> None:
     """A participant who passes the minimum session count (>=10) but fails the density rule.
 
-    Observation period: 84 days.
-    Required sessions: observation_days / 7 = 84 / 7 = 12 sessions.
+    Observation period of retained sessions: 77 days (earliest retained StartTime to latest retained StopTime).
+    Required sessions: observation_days / 7 = 77 / 7 = 11.0 sessions.
     Retained sessions: 10 sessions.
-    Since 10 < 12, the participant is excluded by the density filter.
+    Since 10 < 11.0, the participant is excluded by the density filter.
     """
-    start_dates = [
-        pd.Timestamp("2017-01-01 10:00:00") + pd.Timedelta(days=i * 8.4)
-        for i in range(11)
-    ]
+    base = pd.Timestamp("2017-01-01 10:00:00")
+    retained_start = pd.Timestamp("2017-01-02 10:00:00")
+    # 10 retained sessions spaced across 77 days
+    retained_starts = [retained_start + pd.Timedelta(days=i * 8) for i in range(10)]
+    all_starts = [base] + retained_starts
+    all_stops = [base + pd.Timedelta(hours=2)] + [t + pd.Timedelta(hours=2) for t in retained_starts[:-1]] + [retained_start + pd.Timedelta(days=77, hours=2)]
     df = pd.DataFrame({
         "TransactionID": range(1, 12),
         "ParticipantID": "EN_SPARSE",
-        "StartTime": start_dates,
-        "StopTime": [t + pd.Timedelta(hours=2) for t in start_dates],
+        "StartTime": all_starts,
+        "StopTime": all_stops,
         "Trial": 1.0,
     })
     metrics = screen_participant_history(df)
@@ -272,20 +274,20 @@ def test_density_rule_participant_fails_minimum_density() -> None:
 def test_density_rule_participant_passes_density() -> None:
     """A participant who passes the observation-density rule.
 
-    Observation period: 70 days.
-    Required sessions: 70 / 7 = 10 sessions.
+    Observation period of retained sessions: 70 days (earliest retained StartTime to latest retained StopTime).
+    Required sessions: observation_days / 7 = 70 / 7 = 10.0 sessions.
     Retained sessions: 15 sessions.
-    Since 15 >= 10, the participant is retained.
+    Since 15 >= 10.0, the participant is retained.
     """
     base = pd.Timestamp("2017-01-01 10:00:00")
-    times = [base]
-    retained_base = base + pd.Timedelta(days=1)
-    times += [retained_base + pd.Timedelta(days=i * 5) for i in range(15)]
+    retained_base = pd.Timestamp("2017-01-02 10:00:00")
+    times = [base] + [retained_base + pd.Timedelta(days=i * 5) for i in range(15)]
+    stops = [base + pd.Timedelta(hours=2)] + [t + pd.Timedelta(hours=2) for t in times[1:-1]] + [retained_base + pd.Timedelta(days=70, hours=2)]
     df = pd.DataFrame({
         "TransactionID": range(1, 17),
         "ParticipantID": "EN_ACTIVE",
         "StartTime": times,
-        "StopTime": [t + pd.Timedelta(hours=2) for t in times],
+        "StopTime": stops,
         "Trial": 1.0,
     })
     metrics = screen_participant_history(df)
@@ -303,15 +305,16 @@ def test_density_rule_participant_boundary_exact_threshold() -> None:
     The screening rule is strictly 'retained_session_count < observation_days / 7'.
     When retained_session_count == observation_days / 7, the participant is NOT excluded.
 
-    Observation period: 70 days.
-    observation_days / 7 = 10.0 sessions.
+    Observation period of retained sessions: 70 days (earliest retained StartTime to latest retained StopTime).
+    Required sessions: observation_days / 7 = 70 / 7 = 10.0 sessions.
     Retained sessions: exactly 10 sessions.
+    Since 10 is not less than 10.0, the participant is retained.
     """
     base = pd.Timestamp("2017-01-01 10:00:00")
     retained_start = pd.Timestamp("2017-01-02 10:00:00")
     retained_dates = [retained_start + pd.Timedelta(days=i * 7) for i in range(10)]
     all_starts = [base] + retained_dates
-    all_stops = [base + pd.Timedelta(hours=1)] + [t + pd.Timedelta(hours=1) for t in retained_dates[:-1]] + [retained_start + pd.Timedelta(days=70)]
+    all_stops = [base + pd.Timedelta(hours=1)] + [t + pd.Timedelta(hours=1) for t in retained_dates[:-1]] + [retained_start + pd.Timedelta(days=70, hours=1)]
     df = pd.DataFrame({
         "TransactionID": range(1, 12),
         "ParticipantID": "EN_BOUNDARY",
@@ -329,9 +332,10 @@ def test_density_rule_participant_boundary_exact_threshold() -> None:
 
 def test_final_screening_counts_on_real_workbooks() -> None:
     """Validate expected screening counts on the actual Electric Nation transactions workbook:
-    - Before density filtering: 287 participants, 60,220 sessions
-    - Excluded by density rule: 20 participants, 726 sessions
-    - After density filtering: 267 participants, 59,494 sessions
+    - Step 5 (After overlap removal): 299 participants, 60,575 sessions
+    - Step 6 (After dropping first sessions): 298 participants, 60,276 sessions (299 dropped)
+    - Step 7 (Minimum history filter): 11 participants excluded (56 sessions), leaving 287 participants, 60,220 sessions
+    - Step 8 (Observation density filter): 20 participants excluded (726 sessions), leaving 267 participants, 59,494 sessions
     """
     tx_path = Path("data/raw/electric_nation/CrowdCharge Transactions.xlsx")
     if not tx_path.is_file():
@@ -340,8 +344,22 @@ def test_final_screening_counts_on_real_workbooks() -> None:
     df_tx = load_dataset(tx_path, sheet_name="Transaction Data")
     metrics = screen_participant_history(df_tx)
 
+    # Step 5: Overlaps
+    assert metrics["participants_after_overlaps"] == 299
+    assert metrics["remaining_after_overlaps"] == 60575
+
+    # Step 6: Drop first session
+    assert metrics["dropped_first_sessions"] == 299
+    assert metrics["participants_after_dropped_first"] == 298
+    assert metrics["retained_sessions_total"] == 60276
+
+    # Step 7: Minimum history (>=10 retained sessions)
+    assert metrics["participants_lt_10_retained"] == 11
+    assert metrics["sessions_in_lt_10_retained"] == 56
     assert metrics["participants_before_density"] == 287
     assert metrics["sessions_before_density"] == 60220
+
+    # Step 8: Density filter
     assert metrics["participants_excluded_density"] == 20
     assert metrics["sessions_excluded_density"] == 726
     assert metrics["final_eligible_participants"] == 267
@@ -440,8 +458,8 @@ def test_report_values_change_dynamically_with_metric_changes() -> None:
         "remaining_after_t3": 61242, "participants_after_t3": 300, "short_sessions_excluded": 509,
         "remaining_after_short": 60733, "participants_after_short": 299, "screened_overlaps": 158,
         "remaining_after_overlaps": 60575, "participants_after_overlaps": 299, "dropped_first_sessions": 299,
-        "retained_sessions_total": 60276, "participants_after_dropped_first": 299,
-        "participants_lt_10_retained": 12, "sessions_in_lt_10_retained": 56,
+        "retained_sessions_total": 60276, "participants_after_dropped_first": 298,
+        "participants_lt_10_retained": 11, "sessions_in_lt_10_retained": 56,
         "participants_before_density": 287, "sessions_before_density": 60220,
         "participants_excluded_density": 20, "sessions_excluded_density": 726,
         "final_eligible_participants": 267, "final_eligible_sessions": 59494,

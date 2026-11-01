@@ -1,6 +1,6 @@
 check_name,record_count,percentage,description
 Total Records,673,100.0,Total installation records in sheet 20181126_ChargerInstall_DriveEl
-Unique Participant IDs,673,100.0,Participant identifiers completeness and uniqueness
+Unique Participant IDs,673,100.0,673 distinct participant identifiers in metadata (100.00% uniqueness)
 Duplicate Participant IDs,0,0.0,Duplicate ParticipantIDs
 Duplicate Complete Rows,0,0.0,Duplicate rows
 Missing ParticipantID,0,0.0,ParticipantID completeness
