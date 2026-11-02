@@ -71,6 +71,63 @@ def test_validate_history_dataframe_multiple_participants() -> None:
     assert participants == ["WP1-001", "WP1-002"]
 
 
+def test_validate_history_dataframe_numeric_participants() -> None:
+    """Verify history validator handles numeric participant IDs consistently as strings."""
+    df = pd.DataFrame(
+        [
+            {"ParticipantID": 102, "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": 101, "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok, err, participants = validate_history_dataframe(df)
+    assert ok
+    assert err is None
+    assert participants == ["101", "102"]
+
+
+def test_validate_history_dataframe_null_participants_rejection() -> None:
+    """Verify history validator explicitly rejects all-null and mixed-null participant IDs."""
+    # Case 1: All null participant IDs
+    df_all_null = pd.DataFrame(
+        [
+            {"ParticipantID": np.nan, "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": None, "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok_all, err_all, p_all = validate_history_dataframe(df_all_null)
+    assert not ok_all
+    assert "missing/null" in str(err_all)
+    assert p_all is None
+
+    # Case 2: Mixed null and non-null participant IDs
+    df_mixed = pd.DataFrame(
+        [
+            {"ParticipantID": "WP1-001", "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": np.nan, "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok_mix, err_mix, p_mix = validate_history_dataframe(df_mixed)
+    assert not ok_mix
+    assert "missing/null participant identifiers" in str(err_mix)
+    assert p_mix is None
+
+
+def test_sample_history_relative_timestamps() -> None:
+    """Verify demonstration history timestamps are aligned relative to reference arrival time."""
+    ref_time = "2026-11-03 18:00:00+00:00"
+    sample_csv = get_sample_history_csv(reference_time=ref_time)
+    df_hist = pd.read_csv(io.StringIO(sample_csv))
+
+    assert len(df_hist) == 3
+    # Most recent session stop time
+    last_stop = pd.to_datetime(df_hist["StopTime"].iloc[-1], utc=True)
+    arrival = pd.to_datetime(ref_time, utc=True)
+    time_since_stop = (arrival - last_stop).total_seconds() / 3600.0
+
+    # Must be realistic interval (8 hours), not thousands of hours
+    assert time_since_stop == 8.0
+
+
 def test_validate_batch_dataframe_empty_and_none() -> None:
     """Verify batch validator rejects empty and None inputs."""
     ok, err, missing = validate_batch_dataframe(None)
@@ -131,11 +188,13 @@ def test_sample_generators_and_converters() -> None:
     assert len(df_hist) >= 3
     assert set(["StartTime", "StopTime", "ConsumedkWh"]).issubset(df_hist.columns)
 
-    sample_batch = get_sample_batch_dataframe(n_rows=15)
+    sample_batch, is_synth = get_sample_batch_dataframe(n_rows=15)
     assert len(sample_batch) == 15
+    assert isinstance(is_synth, bool)
     assert "StartTime" in sample_batch.columns
     assert set(FEATURE_NAMES).issubset(sample_batch.columns)
 
     csv_bytes = convert_dataframe_to_csv_bytes(sample_batch)
     assert isinstance(csv_bytes, bytes)
     assert len(csv_bytes) > 0
+

@@ -85,14 +85,14 @@ def render_single_prediction_view() -> None:
         sample_col1, sample_col2 = st.columns([1, 1])
         use_sample = False
         with sample_col1:
-            if st.button("Use Sample History Data", help="Populate with pre-formatted sample history records"):
-                st.session_state["single_history_data"] = get_sample_history_csv()
+            if st.button("Use Sample History Data", help="Populate with pre-formatted demonstration history matching arrival timestamp"):
+                st.session_state["single_history_data"] = get_sample_history_csv(reference_time=arrival_str)
                 st.session_state["history_source"] = "sample"
 
         with sample_col2:
             st.download_button(
                 label="Download Sample CSV",
-                data=get_sample_history_csv(),
+                data=get_sample_history_csv(reference_time=arrival_str),
                 file_name="sample_charging_history.csv",
                 mime="text/csv",
                 help="Download sample CSV template for driver history",
@@ -114,7 +114,7 @@ def render_single_prediction_view() -> None:
                 st.error(f"Failed to parse uploaded CSV: {exc}")
         elif "single_history_data" in st.session_state and st.session_state.get("history_source") == "sample":
             history_df = pd.read_csv(io.StringIO(st.session_state["single_history_data"]))
-            st.info("Loaded sample completed driver history (3 records).")
+            st.info("Loaded demonstration driver history.")
 
         # Validate history DataFrame
         is_valid_history, error_msg, multiple_participants = validate_history_dataframe(history_df)
@@ -135,8 +135,15 @@ def render_single_prediction_view() -> None:
                         index=0,
                         help="Filter historical records to this individual driver before feature extraction.",
                     )
-                    history_df = history_df[history_df["ParticipantID"] == selected_participant].copy()
+                    history_df = history_df[
+                        history_df["ParticipantID"].notna()
+                        & (history_df["ParticipantID"].astype(str) == str(selected_participant))
+                    ].copy()
                     st.caption(f"Filtered to **{len(history_df)} sessions** for participant `{selected_participant}`.")
+                elif "ParticipantID" in history_df.columns:
+                    # Single participant with explicit identifier: ensure no null IDs leak
+                    history_df = history_df[history_df["ParticipantID"].notna()].copy()
+                    st.success(f"History validated successfully ({len(history_df)} sessions loaded).")
                 else:
                     st.success(f"History validated successfully ({len(history_df)} sessions loaded).")
 

@@ -61,7 +61,7 @@ def main() -> None:
                 &bull; Targets: <code>Duration (h)</code> & <code>Energy (kWh)</code><br>
                 &bull; Benchmark: <code>Electric Nation Trial</code><br>
                 &bull; Cohort: <code>59,520 Sessions</code><br>
-                &bull; Release: <code>v0.1.0-prod</code>
+                &bull; Release: <code>v0.1.0-preview</code>
             </div>
             """,
             unsafe_allow_html=True,
@@ -81,3 +81,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

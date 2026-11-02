@@ -16,11 +16,9 @@ def inject_custom_css() -> None:
     st.markdown(
         """
         <style>
-        /* Base typography & layout smoothing */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
+        /* Base typography & layout smoothing - System sans-serif stack */
         html, body, [class*="css"] {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             color: #0F172A;
         }
 
@@ -291,3 +289,4 @@ def render_footer() -> None:
         """,
         unsafe_allow_html=True,
     )
+

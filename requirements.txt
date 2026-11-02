@@ -1,5 +1,5 @@
 # TARANG — EV Charging Intelligence System dependencies
-# Deployment requirements for Streamlit Community Cloud & local execution
+# Minimum verified dependency versions for local execution and deployment
 numpy>=1.24.0
 pandas>=2.0.0
 pyarrow>=14.0.0
@@ -12,3 +12,4 @@ joblib>=1.3.0
 shap>=0.44.0
 statsmodels>=0.14.0
 streamlit>=1.30.0
+

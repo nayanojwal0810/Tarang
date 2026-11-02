@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import io
+import os
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
 import numpy as np
@@ -21,15 +23,34 @@ REQUIRED_HISTORY_COLUMNS: List[str] = ["StartTime", "StopTime", "ConsumedkWh"]
 @st.cache_resource(show_spinner="Loading TARANG predictive models...")
 def get_decision_support_engine(
     model_name: str = "HistGradientBoostingRegressor",
+    models_dir: Optional[Union[str, Path]] = None,
+    summary_file: Optional[Union[str, Path]] = None,
 ) -> DecisionSupportEngine:
-    """Load and cache the pre-trained DecisionSupportEngine instance across sessions."""
-    return DecisionSupportEngine(model_name=model_name)
+    """Load and cache the pre-trained DecisionSupportEngine instance across sessions.
+
+    Honors explicit arguments or TARANG_MODELS_DIR and TARANG_SUMMARY_FILE environment
+    variables for clean test isolation and deployment environments.
+    """
+    env_models = os.environ.get("TARANG_MODELS_DIR")
+    env_summary = os.environ.get("TARANG_SUMMARY_FILE")
+
+    effective_models_dir = Path(models_dir) if models_dir else (Path(env_models) if env_models else None)
+    effective_summary_file = Path(summary_file) if summary_file else (Path(env_summary) if env_summary else None)
+
+    return DecisionSupportEngine(
+        model_name=model_name,
+        models_dir=effective_models_dir,
+        summary_file=effective_summary_file,
+    )
 
 
 def validate_history_dataframe(
     df: Optional[pd.DataFrame],
 ) -> Tuple[bool, Optional[str], Optional[List[str]]]:
     """Validate user-uploaded completed session history for single-session inference.
+
+    Handles numeric and string participant identifiers consistently and explicitly
+    rejects ambiguous histories with missing or partially missing identifiers.
 
     Args:
         df: Uploaded session history DataFrame.
@@ -51,9 +72,28 @@ def validate_history_dataframe(
     # Check for ParticipantID column
     participants: Optional[List[str]] = None
     if "ParticipantID" in df.columns:
-        unique_p = df["ParticipantID"].dropna().astype(str).unique().tolist()
-        if len(unique_p) > 1:
-            participants = sorted(unique_p)
+        p_series = df["ParticipantID"]
+        # Check if all rows are null
+        if p_series.isna().all():
+            return False, "ParticipantID column is present but contains only missing/null values.", None
+
+        # Check for mixed nulls (some null rows alongside identified records)
+        if p_series.isna().any():
+            return (
+                False,
+                "Uploaded history contains rows with missing/null participant identifiers alongside identified records. "
+                "Every record must have a valid identifier.",
+                None,
+            )
+
+        # Convert identifiers (numeric or string) to clean strings
+        raw_unique = p_series.dropna().unique()
+        unique_p = sorted(list(set(str(x).strip() for x in raw_unique if str(x).strip())))
+
+        if len(unique_p) == 0:
+            return False, "ParticipantID column contains no valid non-empty identifiers.", None
+        elif len(unique_p) > 1:
+            participants = unique_p
 
     return True, None, participants
 
@@ -107,26 +147,42 @@ def load_file_into_dataframe(uploaded_file: st.runtime.uploaded_file_manager.Upl
         raise ValueError(f"Unsupported file format '{uploaded_file.name}'. Please upload a .csv or .parquet file.")
 
 
-def get_sample_history_csv() -> str:
-    """Generate sample historical completed sessions CSV string for quick testing."""
+def get_sample_history_csv(
+    reference_time: Optional[Union[str, pd.Timestamp, datetime]] = None,
+) -> str:
+    """Generate sample historical completed sessions CSV string for testing.
+
+    Places prior completed sessions relative to reference_time (or current UTC time)
+    to ensure realistic interval gaps without extreme TimeSinceLastStop values.
+    """
+    if reference_time is not None:
+        try:
+            ref_ts = pd.to_datetime(reference_time, utc=True)
+            if pd.isna(ref_ts):
+                ref_ts = pd.Timestamp.now(timezone.utc)
+        except Exception:
+            ref_ts = pd.Timestamp.now(timezone.utc)
+    else:
+        ref_ts = pd.Timestamp.now(timezone.utc)
+
     sample_df = pd.DataFrame(
         [
             {
                 "ParticipantID": "WP1-042",
-                "StartTime": "2018-05-10 18:30:00+00:00",
-                "StopTime": "2018-05-11 07:15:00+00:00",
+                "StartTime": (ref_ts - pd.Timedelta(hours=66)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
+                "StopTime": (ref_ts - pd.Timedelta(hours=56)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
                 "ConsumedkWh": 14.8,
             },
             {
                 "ParticipantID": "WP1-042",
-                "StartTime": "2018-05-12 19:00:00+00:00",
-                "StopTime": "2018-05-13 06:45:00+00:00",
+                "StartTime": (ref_ts - pd.Timedelta(hours=40)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
+                "StopTime": (ref_ts - pd.Timedelta(hours=32)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
                 "ConsumedkWh": 18.2,
             },
             {
                 "ParticipantID": "WP1-042",
-                "StartTime": "2018-05-14 17:45:00+00:00",
-                "StopTime": "2018-05-15 08:00:00+00:00",
+                "StartTime": (ref_ts - pd.Timedelta(hours=16)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
+                "StopTime": (ref_ts - pd.Timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S+00:00"),
                 "ConsumedkWh": 22.5,
             },
         ]
@@ -134,17 +190,23 @@ def get_sample_history_csv() -> str:
     return sample_df.to_csv(index=False)
 
 
-def get_sample_batch_dataframe(n_rows: int = 50) -> pd.DataFrame:
-    """Retrieve sample batch evaluation records from canonical features if available, else synthetic."""
+def get_sample_batch_dataframe(n_rows: int = 50) -> Tuple[pd.DataFrame, bool]:
+    """Retrieve sample batch evaluation records.
+
+    Returns:
+        Tuple of (DataFrame, is_synthetic: bool).
+        is_synthetic is False if records are sampled from Electric Nation canonical dataset,
+        and True if generated via synthetic fallback.
+    """
     if PROCESSED_FEATURES_FILE.is_file():
         try:
             full_df = pd.read_parquet(PROCESSED_FEATURES_FILE)
             sample = full_df.head(n_rows).copy()
-            return sample
+            return sample, False
         except Exception:
             pass
 
-    # Synthetic fallback
+    # Synthetic fallback for clean environments without local private data
     np.random.seed(42)
     start_times = pd.date_range("2018-05-01 08:00:00", periods=n_rows, freq="6h", tz="UTC")
     data = {
@@ -166,9 +228,10 @@ def get_sample_batch_dataframe(n_rows: int = 50) -> pd.DataFrame:
         "StopTime": start_times + pd.to_timedelta(np.random.uniform(3.0, 14.0, size=n_rows), unit="h"),
         "ChargingDuration": np.random.uniform(60.0, 300.0, size=n_rows),
     }
-    return pd.DataFrame(data)
+    return pd.DataFrame(data), True
 
 
 def convert_dataframe_to_csv_bytes(df: pd.DataFrame) -> bytes:
     """Encode DataFrame to UTF-8 CSV bytes for Streamlit file download button."""
     return df.to_csv(index=False).encode("utf-8")
+

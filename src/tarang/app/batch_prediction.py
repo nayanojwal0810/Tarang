@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,16 @@ from tarang.decision_support.reporting import (
     generate_flexibility_summary_table,
     generate_prediction_summary_table,
 )
+
+
+def _compute_dataset_id(df: pd.DataFrame) -> str:
+    """Compute a deterministic hash fingerprint for an input DataFrame to prevent stale results."""
+    shape_sig = f"{df.shape[0]}x{df.shape[1]}"
+    cols_sig = ",".join(sorted(df.columns))
+    head_sig = str(df.head(2).to_dict()) if not df.empty else "empty"
+    tail_sig = str(df.tail(2).to_dict()) if not df.empty else "empty"
+    raw = f"{shape_sig}|{cols_sig}|{head_sig}|{tail_sig}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
 
 
 def render_batch_prediction_view() -> None:
@@ -50,11 +61,14 @@ def render_batch_prediction_view() -> None:
         st.markdown("#### Sample Dataset")
         st.markdown("Test the batch pipeline instantly using 50 pre-validated session records:")
         if st.button("Load Sample Batch Data (50 sessions)", use_container_width=True):
+            sample_df, is_synth = get_sample_batch_dataframe(n_rows=50)
             st.session_state["batch_data_source"] = "sample"
-            st.session_state["sample_batch_df"] = get_sample_batch_dataframe(n_rows=50)
+            st.session_state["sample_batch_df"] = sample_df
+            st.session_state["sample_batch_is_synthetic"] = is_synth
 
         # Download sample template
-        sample_csv = convert_dataframe_to_csv_bytes(get_sample_batch_dataframe(n_rows=10))
+        template_df, _ = get_sample_batch_dataframe(n_rows=10)
+        sample_csv = convert_dataframe_to_csv_bytes(template_df)
         st.download_button(
             label="Download Batch Template (CSV)",
             data=sample_csv,
@@ -83,12 +97,23 @@ def render_batch_prediction_view() -> None:
             st.error(f"Error reading uploaded file: {exc}")
     elif st.session_state.get("batch_data_source") == "sample":
         batch_df = st.session_state.get("sample_batch_df")
-        st.info("Loaded sample batch dataset (50 sessions).")
+        is_synth = st.session_state.get("sample_batch_is_synthetic", False)
+        if is_synth:
+            st.info(
+                "Loaded synthetic demonstration dataset (50 simulated sessions). "
+                "Note: Synthetic data is generated for demonstration and testing purposes; "
+                "it does not represent actual historical observations."
+            )
+        else:
+            st.info("Loaded sample batch records (50 sessions) from the Electric Nation empirical trial dataset.")
 
     if batch_df is None:
         st.info("Upload a `.csv` or `.parquet` file or click **Load Sample Batch Data** to begin.")
         render_disclaimer()
         return
+
+    # Compute dataset fingerprint for cache binding
+    dataset_id = _compute_dataset_id(batch_df)
 
     # VALIDATION
     is_valid, error_msg, missing_cols = validate_batch_dataframe(batch_df)
@@ -124,14 +149,22 @@ def render_batch_prediction_view() -> None:
         with st.spinner(f"Evaluating {len(batch_df):,} sessions across dual HGBR estimators..."):
             try:
                 advisories_df = engine.predict_batch_advisories(batch_df)
-                st.session_state["batch_results"] = advisories_df
+                flex_stats = analyze_charging_flexibility(batch_df)
+                st.session_state["batch_advisories_cache"] = {
+                    "dataset_id": dataset_id,
+                    "advisories": advisories_df,
+                    "flex_stats": flex_stats,
+                }
             except Exception as exc:
                 st.error(f"Batch advisory generation failed: {exc}")
                 return
 
-    # DISPLAY RESULTS IF AVAILABLE
-    if "batch_results" in st.session_state:
-        results_df: pd.DataFrame = st.session_state["batch_results"]
+    # DISPLAY RESULTS ONLY IF BOUND TO CURRENT DATASET FINGERPRINT
+    cached_payload = st.session_state.get("batch_advisories_cache")
+
+    if cached_payload and cached_payload.get("dataset_id") == dataset_id:
+        results_df: pd.DataFrame = cached_payload["advisories"]
+        flex_stats: dict = cached_payload["flex_stats"]
 
         st.success(f"Successfully generated advisories for {len(results_df):,} sessions.")
 
@@ -207,11 +240,9 @@ def render_batch_prediction_view() -> None:
             type="primary",
         )
 
-        # FLEXIBILITY ANALYSIS SECTION
+        # FLEXIBILITY ANALYSIS SECTION (referring to the EXACT same dataset)
         st.markdown("---")
         st.markdown("### Smart-Charging Flexibility Analysis")
-
-        flex_stats = analyze_charging_flexibility(batch_df)
 
         if flex_stats.get("available", False):
             st.markdown(
@@ -254,5 +285,8 @@ def render_batch_prediction_view() -> None:
                 f"**Flexibility Analysis Unavailable**: {reason} "
                 "To evaluate smart-charging flexibility, include `StartTime`, `StopTime`, and `ChargingDuration` in the dataset."
             )
+    else:
+        st.info("Click **Generate Batch Advisories** to evaluate the currently loaded dataset.")
 
     render_disclaimer()
+
