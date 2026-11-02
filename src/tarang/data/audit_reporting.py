@@ -404,7 +404,7 @@ def generate_markdown_report(
 A complete, evidence-based data audit was performed on the raw Electric Nation datasets downloaded locally in `data/raw/electric_nation/`. The primary objective was to establish whether the raw data supports the planned EV charging prediction (plugged-in duration and energy consumption) and behavioral analysis models without data leakage or fatal quality defects.
 
 **Key Findings:**
-- **Usability**: The dataset **supports** the planned system, provided specific preprocessing rules, duration capping, and outlier treatments are implemented.
+- **Usability**: The dataset **supports** the planned system, provided specific preprocessing rules and duration capping are implemented. The audit flags implausible energy readings; canonical preparation does not apply energy outlier removal or clipping.
 - **Timestamp Standard**: All raw timestamps are verified and treated as **UTC-aware timestamps** without shifting their recorded clock values.
 - **Transaction Coverage**: {total_tx:,} transaction records spanning from {ts_metrics['earliest_start']} to {ts_metrics['latest_stop']} UTC.
 - **Participant Coverage**: {row_meta_metrics['unique_tx_participants']} distinct non-null participants in transactions and {row_meta_metrics['unique_meta_participants']} participants in vehicle metadata.

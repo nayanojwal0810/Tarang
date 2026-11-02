@@ -52,7 +52,7 @@ def calculate_data_availability(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[st
         stop_max = group["StopTime"].max()
         span_days = (stop_max - start_min).days
         n_sessions = len(group.index)
-        weekly_freq = (n_sessions / span_days * 7.0) if span_days > 0 else 0.0
+        weekly_freq = n_sessions / span_days * 7.0
         durations = (group["StopTime"] - group["StartTime"]).dt.total_seconds() / 3600.0
         mean_dur = float(durations.mean())
 
