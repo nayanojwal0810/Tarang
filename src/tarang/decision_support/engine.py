@@ -1,7 +1,7 @@
 """Decision support engine for EV charging session occupancy and advisory intelligence.
 
 Provides single-session and batch advisory APIs generating predicted connection durations,
-energy consumption, occupancy validity checks, and projected vehicle unplug timestamps in UTC.
+energy consumption, numeric validity checks, and projected vehicle unplug timestamps in UTC.
 Preserves raw estimator integrity without post-processing, artificial thresholding, or clipping.
 """
 
@@ -32,7 +32,7 @@ class SessionAdvisory:
         arrival_time_utc: Normalized session connection arrival timestamp in UTC.
         predicted_duration_hours: Raw model estimate of total plugged-in duration in hours.
         predicted_energy_kwh: Raw model estimate of active energy consumption in kWh.
-        projected_unplug_time_utc: Projected departure timestamp in UTC (or pd.NaT if invalid).
+        projected_unplug_time_utc: Projected departure timestamp in UTC (or pd.NaT if duration is invalid).
         duration_prediction_valid: Boolean flag indicating if duration estimate is finite and >= 0.0.
         energy_prediction_valid: Boolean flag indicating if energy estimate is finite and >= 0.0.
     """
@@ -231,11 +231,14 @@ class DecisionSupportEngine:
     ) -> pd.DataFrame:
         """Generate aligned session advisories for a batch of session feature rows.
 
-        Preserves all input columns and original index (including non-consecutive or duplicate indices).
+        Validates arrival timestamps before model invocation, rejects missing/NaT/malformed
+        timestamps, and preserves all input columns and original index (including non-consecutive
+        or duplicate indices).
+
         Appends:
         - `predicted_Duration`: Raw numeric prediction in hours.
         - `predicted_ConsumedkWh`: Raw numeric prediction in kWh.
-        - `projected_unplug_time_utc`: UTC Timestamp of estimated unplug time (NaT if invalid).
+        - `projected_unplug_time_utc`: UTC Timestamp of estimated unplug time (NaT if duration invalid).
         - `duration_prediction_valid`: bool indicating finite, non-negative duration prediction.
         - `energy_prediction_valid`: bool indicating finite, non-negative energy prediction.
 
@@ -246,7 +249,8 @@ class DecisionSupportEngine:
             DataFrame copy containing all original columns and index plus the 5 advisory columns.
 
         Raises:
-            ValueError: If input is empty, missing 'StartTime', or fails feature validation.
+            ValueError: If input is empty, missing 'StartTime', contains invalid/NaT timestamps,
+                or fails feature schema validation.
         """
         if features_df is None or not isinstance(features_df, pd.DataFrame):
             raise ValueError(
@@ -254,15 +258,29 @@ class DecisionSupportEngine:
             )
         if features_df.empty:
             raise ValueError("Input features DataFrame is empty.")
+
+        # 1. Validate presence and parse arrival timestamps before invoking models
         if "StartTime" not in features_df.columns:
             raise ValueError(
                 "Input features DataFrame must contain 'StartTime' column to compute session advisories."
             )
 
-        # Validate predictors
+        start_col = features_df["StartTime"]
+        if start_col.isna().any():
+            raise ValueError("StartTime column contains missing or null/NaT timestamps.")
+
+        try:
+            start_utc = pd.to_datetime(start_col, utc=True)
+        except Exception as exc:
+            raise ValueError(f"Failed to parse 'StartTime' timestamps to UTC: {exc}") from exc
+
+        if start_utc.isna().any():
+            raise ValueError("StartTime column contains unparseable or NaT timestamps.")
+
+        # 2. Validate predictors
         _ = validate_inference_features(features_df)
 
-        # Generate batch predictions for both targets
+        # 3. Generate batch predictions for both targets
         dur_preds = predict_batch(
             features_df=features_df,
             target=TARGET_DURATION,
@@ -278,7 +296,7 @@ class DecisionSupportEngine:
             model=self.energy_model,
         )
 
-        # Preserve input DataFrame and append advisory columns using position-aligned arrays
+        # 4. Preserve input DataFrame and append advisory columns using position-aligned arrays
         result_df = features_df.copy()
         raw_dur_arr = np.asarray(dur_preds.to_numpy(), dtype=np.float64)
         raw_energy_arr = np.asarray(energy_preds.to_numpy(), dtype=np.float64)
@@ -289,9 +307,6 @@ class DecisionSupportEngine:
         # Validity flags: finite and non-negative
         dur_valid = np.isfinite(raw_dur_arr) & (raw_dur_arr >= 0.0)
         energy_valid = np.isfinite(raw_energy_arr) & (raw_energy_arr >= 0.0)
-
-        # Parse StartTime to UTC
-        start_utc = pd.to_datetime(result_df["StartTime"], utc=True)
 
         # Projected unplug timestamp: arrival + predicted duration in hours (NaT if duration invalid)
         dur_delta = pd.to_timedelta(np.where(dur_valid, raw_dur_arr, 0.0), unit="h")

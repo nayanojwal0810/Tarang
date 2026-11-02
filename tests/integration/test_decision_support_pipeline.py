@@ -5,6 +5,7 @@ Validates:
 - Output generation of session advisories (.parquet / .csv), prediction_summary.csv,
   flexibility_summary.csv, and decision_support_summary.md.
 - CLI execution via scripts/run_decision_support.py with argument parsing.
+- Strict enforcement of supported file formats (.parquet and .csv, case-insensitive).
 - Correct handling when input dataset contains or lacks historical flexibility columns.
 - End-to-end verification against local Stage 2 models and canonical dataset if present.
 """
@@ -122,11 +123,16 @@ def test_end_to_end_decision_support_engine(mock_environment: dict[str, Path]) -
     assert artifacts["flexibility_summary"].is_file()
     assert artifacts["report"].is_file()
 
-    # Verify report content
+    # Verify report content contains updated factual headers
     report_text = artifacts["report"].read_text(encoding="utf-8")
     assert "TARANG — Stage 5: Decision Support Summary Report" in report_text
     assert "Predictive Session Advisories Distribution" in report_text
     assert "Smart-Charging Flexibility Ratio Analysis" in report_text
+    assert "Valid Ratios" in report_text
+    assert "Ratios in [0, 1] Histogram" in report_text
+    assert "Mean Ratio (All Valid)" in report_text
+    assert "Median Ratio (All Valid)" in report_text
+    assert "Descriptive Flexibility Observations" in report_text
     assert "Operational Boundaries & Non-Dispatch Scope" in report_text
     assert "LinearRegression" in report_text
 
@@ -155,6 +161,65 @@ def test_cli_execution_synthetic(mock_environment: dict[str, Path]) -> None:
     assert (report_dir / "decision_support_summary.md").is_file()
 
 
+def test_cli_unsupported_file_formats(mock_environment: dict[str, Path], tmp_path: Path) -> None:
+    """Verify CLI rejects unsupported input and output extensions."""
+    base_dir = mock_environment["base_dir"]
+    valid_input = mock_environment["input_file"]
+
+    # Case 1: Unsupported input extension (.txt)
+    unsupported_in = tmp_path / "data.txt"
+    unsupported_in.write_text("dummy", encoding="utf-8")
+    ret_in = run_cli_main([
+        "--input", str(unsupported_in),
+        "--output", str(tmp_path / "out.parquet"),
+        "--models-dir", str(base_dir),
+    ])
+    assert ret_in == 1
+
+    # Case 2: Unsupported output extension (.json)
+    ret_out = run_cli_main([
+        "--input", str(valid_input),
+        "--output", str(tmp_path / "out.json"),
+        "--models-dir", str(base_dir),
+    ])
+    assert ret_out == 1
+
+
+def test_save_artifacts_unsupported_format(mock_environment: dict[str, Path], tmp_path: Path) -> None:
+    """Verify save_decision_support_artifacts rejects unsupported output formats."""
+    base_dir = mock_environment["base_dir"]
+    df = pd.read_parquet(mock_environment["input_file"])
+    engine = DecisionSupportEngine(model_name="LinearRegression", models_dir=base_dir)
+    advisories = engine.predict_batch_advisories(df)
+
+    with pytest.raises(ValueError, match="Unsupported output advisories file format"):
+        save_decision_support_artifacts(
+            advisories_df=advisories,
+            output_advisories_path=tmp_path / "out.xlsx",
+            report_dir=tmp_path / "reports",
+        )
+
+
+def test_cli_case_insensitive_supported_extensions(mock_environment: dict[str, Path], tmp_path: Path) -> None:
+    """Verify uppercase extensions (.PARQUET, .CSV) work cleanly in CLI."""
+    base_dir = mock_environment["base_dir"]
+    orig_input = mock_environment["input_file"]
+
+    # Create uppercase .PARQUET input file
+    upper_input = tmp_path / "features.PARQUET"
+    upper_input.write_bytes(orig_input.read_bytes())
+
+    upper_output = tmp_path / "advisories.CSV"
+    ret = run_cli_main([
+        "--input", str(upper_input),
+        "--output", str(upper_output),
+        "--report-dir", str(tmp_path / "reports"),
+        "--models-dir", str(base_dir),
+    ])
+    assert ret == 0
+    assert upper_output.is_file()
+
+
 def test_decision_support_without_flexibility_columns(mock_environment: dict[str, Path]) -> None:
     """Verify that omitting flexibility columns still generates valid advisories and reports."""
     input_file = mock_environment["input_file"]
@@ -173,6 +238,7 @@ def test_decision_support_without_flexibility_columns(mock_environment: dict[str
     flex_stats = analyze_charging_flexibility(df_no_flex)
 
     assert flex_stats["available"] is False
+    assert flex_stats["missing_columns"] == ["ChargingDuration", "StopTime"]
 
     artifacts = save_decision_support_artifacts(
         advisories_df=advisories,
@@ -186,7 +252,7 @@ def test_decision_support_without_flexibility_columns(mock_environment: dict[str
     assert artifacts["report"].is_file()
 
     report_text = artifacts["report"].read_text(encoding="utf-8")
-    assert "Flexibility analysis is unavailable" in report_text
+    assert "Flexibility analysis is unavailable: Missing required historical column(s)" in report_text
 
 
 @pytest.mark.skipif(

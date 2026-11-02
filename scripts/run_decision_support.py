@@ -14,7 +14,7 @@ import argparse
 import logging
 from pathlib import Path
 import sys
-from typing import List, Optional
+from typing import List, Optional, Set
 import pandas as pd
 
 from tarang.config import (
@@ -32,6 +32,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("scripts.run_decision_support")
+
+SUPPORTED_EXTENSIONS: Set[str] = {".parquet", ".csv"}
 
 
 def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -85,22 +87,36 @@ def main(argv: Optional[List[str]] = None) -> int:
     report_dir = Path(args.report_dir)
     models_dir = Path(args.models_dir) if args.models_dir else None
 
+    # Enforce supported input extension
+    ext_in = input_path.suffix.lower()
+    if ext_in not in SUPPORTED_EXTENSIONS:
+        logger.error(
+            "Unsupported input file format '%s'. Must be one of: %s.",
+            input_path.suffix,
+            sorted(SUPPORTED_EXTENSIONS),
+        )
+        return 1
+
+    # Enforce supported output extension
+    ext_out = output_path.suffix.lower()
+    if ext_out not in SUPPORTED_EXTENSIONS:
+        logger.error(
+            "Unsupported output file format '%s'. Must be one of: %s.",
+            output_path.suffix,
+            sorted(SUPPORTED_EXTENSIONS),
+        )
+        return 1
+
     if not input_path.is_file():
         logger.error("Input file does not exist: %s", input_path)
         return 1
 
     logger.info("Loading input dataset from: %s", input_path)
     try:
-        if input_path.suffix.lower() == ".parquet":
+        if ext_in == ".parquet":
             input_df = pd.read_parquet(input_path)
-        elif input_path.suffix.lower() in [".csv", ".txt"]:
-            input_df = pd.read_csv(input_path)
         else:
-            logger.error(
-                "Unsupported input file format '%s'. Must be .parquet or .csv.",
-                input_path.suffix,
-            )
-            return 1
+            input_df = pd.read_csv(input_path)
     except Exception as exc:
         logger.error("Failed to read input file: %s", exc)
         return 1
@@ -128,7 +144,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         flex_stats = analyze_charging_flexibility(input_df)
     except Exception as exc:
         logger.warning("Flexibility analysis encountered an error: %s. Continuing...", exc)
-        flex_stats = {"available": False, "reason": str(exc)}
+        flex_stats = {"available": False, "reason": str(exc), "missing_columns": None}
 
     logger.info("Persisting advisories and generating operational reports...")
     try:

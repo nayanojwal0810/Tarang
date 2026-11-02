@@ -12,21 +12,20 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 import numpy as np
 import pandas as pd
 
 from tarang.config import (
     DECISION_SUPPORT_REPORTS_DIR,
-    DEFAULT_DECISION_FLEXIBILITY_SUMMARY_FILE,
-    DEFAULT_DECISION_PREDICTION_SUMMARY_FILE,
-    DEFAULT_DECISION_REPORT_FILE,
     PROJECT_ROOT,
     TARGET_DURATION,
     TARGET_ENERGY,
 )
 
 logger = logging.getLogger("tarang.decision_support.reporting")
+
+SUPPORTED_ADVISORY_EXTENSIONS: Set[str] = {".parquet", ".csv"}
 
 
 def generate_prediction_summary_table(advisories_df: pd.DataFrame) -> pd.DataFrame:
@@ -145,16 +144,16 @@ def generate_flexibility_summary_table(
         {
             "category": "Same-Day Sessions",
             "total_sessions": int(flexibility_stats.get("same_day_total", 0)),
-            "evaluated_in_range": int(flexibility_stats.get("same_day_in_range", 0)),
             "valid_sessions": int(flexibility_stats.get("same_day_valid", 0)),
+            "evaluated_in_range": int(flexibility_stats.get("same_day_in_range", 0)),
             "mean_ratio": round(float(flexibility_stats.get("same_day_mean_ratio", 0.0)), 4),
             "median_ratio": round(float(flexibility_stats.get("same_day_median_ratio", 0.0)), 4),
         },
         {
             "category": "Overnight Sessions",
             "total_sessions": int(flexibility_stats.get("overnight_total", 0)),
-            "evaluated_in_range": int(flexibility_stats.get("overnight_in_range", 0)),
             "valid_sessions": int(flexibility_stats.get("overnight_valid", 0)),
+            "evaluated_in_range": int(flexibility_stats.get("overnight_in_range", 0)),
             "mean_ratio": round(float(flexibility_stats.get("overnight_mean_ratio", 0.0)), 4),
             "median_ratio": round(float(flexibility_stats.get("overnight_median_ratio", 0.0)), 4),
         },
@@ -208,38 +207,46 @@ def generate_decision_support_markdown_report(
     pred_table_md = "\n".join(pred_table_lines)
 
     # Format flexibility markdown table if available
-    if flex_df is not None:
+    if flex_df is not None and flexibility_stats is not None and flexibility_stats.get("available", False):
         flex_table_lines = [
-            "| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio |",
-            "| :--- | :---: | :---: | :---: | :---: |",
+            "| Session Category | Total Sessions | Valid Ratios | Ratios in [0, 1] Histogram | Mean Ratio (All Valid) | Median Ratio (All Valid) |",
+            "| :--- | :---: | :---: | :---: | :---: | :---: |",
         ]
         for _, row in flex_df.iterrows():
             flex_table_lines.append(
-                f"| **{row['category']}** | {row['total_sessions']:,} | {row['evaluated_in_range']:,} | "
-                f"{row['mean_ratio']:.3f} | {row['median_ratio']:.3f} |"
+                f"| **{row['category']}** | {row['total_sessions']:,} | {row['valid_sessions']:,} | "
+                f"{row['evaluated_in_range']:,} | {row['mean_ratio']:.3f} | {row['median_ratio']:.3f} |"
             )
         flex_table_md = "\n".join(flex_table_lines)
 
+        same_day_mean = flexibility_stats.get("same_day_mean_ratio", 0.0)
         same_day_median = flexibility_stats.get("same_day_median_ratio", 0.0)
+        overnight_mean = flexibility_stats.get("overnight_mean_ratio", 0.0)
         overnight_median = flexibility_stats.get("overnight_median_ratio", 0.0)
+
         flexibility_section = f"""## 2. Smart-Charging Flexibility Ratio Analysis
 
-Smart-charging flexibility is quantified as the ratio of active charging duration to total connection duration:
+Smart-charging flexibility is evaluated as the descriptive ratio of active charging duration to total connection duration:
 
 $$\\text{{Flexibility Ratio}} = \\frac{{\\text{{ChargingDuration}} / 60.0}}{{(\\text{{StopTime}} - \\text{{StartTime}})_{{\\text{{hours}}}}}}$$
 
-Sessions are partitioned using local UK calendar dates (`Europe/London`) into same-day arrivals versus overnight charging sessions.
+Sessions are classified using local UK calendar dates (`Europe/London`) into same-day arrivals versus overnight charging sessions.
 
 {flex_table_md}
 
-### Flexibility Key Findings
-- **Overnight Flexibility Advantage**: Overnight sessions exhibit a median flexibility ratio of **{overnight_median:.3f}** (mean: **{flexibility_stats.get('overnight_mean_ratio', 0.0):.3f}**), indicating that vehicles remain plugged in idle for over 80% of their connection window. This presents substantial load shifting and renewable curtailment mitigation opportunities.
-- **Same-Day Tight Occupancy**: Same-day sessions demonstrate a median ratio of **{same_day_median:.3f}** (mean: **{flexibility_stats.get('same_day_mean_ratio', 0.0):.3f}**), reflecting shorter daytime connection spans where active charging occupies the majority of the connection.
+### Descriptive Flexibility Observations
+- **Overnight Sessions**: In the historical sample, overnight sessions exhibit an observed median ratio of **{overnight_median:.3f}** and an observed mean ratio of **{overnight_mean:.3f}** calculated across all valid sessions. This descriptive ratio reflects the historical relationship between active charging duration and total plugged-in connection duration; it does not establish that the remaining connection time or energy can be shifted in practice, nor does it guarantee schedulable flexibility under operational constraints.
+- **Same-Day Sessions**: Same-day sessions exhibit an observed median ratio of **{same_day_median:.3f}** and an observed mean ratio of **{same_day_mean:.3f}** across all valid sessions.
 """
     else:
-        flexibility_section = """## 2. Smart-Charging Flexibility Ratio Analysis
+        reason = (
+            flexibility_stats.get("reason", "Historical connection columns omitted or DataFrame empty.")
+            if flexibility_stats
+            else "Flexibility analysis was not executed."
+        )
+        flexibility_section = f"""## 2. Smart-Charging Flexibility Ratio Analysis
 
-*Flexibility analysis is unavailable because historical raw connection timestamps (`ChargingDuration`, `StartTime`, `StopTime`) were omitted from the input dataset.*
+*Flexibility analysis is unavailable: {reason}*
 """
 
     # Occupancy projections summary
@@ -260,12 +267,12 @@ Sessions are partitioned using local UK calendar dates (`Europe/London`) into sa
 
 ## 1. Predictive Session Advisories Distribution
 
-The decision support layer generates raw numeric estimates of connection duration and energy demand, verifies non-negativity and finiteness, and calculates projected departure timestamps.
+The decision support layer generates raw numeric estimates of connection duration and energy demand, performs finite and non-negative validity verification, and calculates projected departure timestamps.
 
 {pred_table_md}
 
 ### Operational Advisory Integrity
-- **Non-Negativity Verification**: Estimator outputs are strictly validated via `isfinite(pred) and pred >= 0.0`. Flagged predictions retain their raw continuous estimator values without artificial clipping or thresholding.
+- **Numeric Validity Verification**: Estimator outputs are strictly validated via `isfinite(pred) and pred >= 0.0`. Flagged predictions retain their raw continuous estimator values without artificial clipping or thresholding.
 - **Occupancy Projections**: A total of **{valid_unplug_count:,} sessions ({valid_unplug_pct:.1f}%)** produced valid duration predictions and corresponding projected unplug timestamps (`projected_unplug_time_utc`). Invalid or negative duration estimates are safely represented as `NaT` (Not-a-Time) to prevent faulty bay scheduling.
 
 ---
@@ -316,6 +323,9 @@ def save_decision_support_artifacts(
 
     Returns:
         Dictionary mapping artifact identifiers to their written Path locations.
+
+    Raises:
+        ValueError: If output_advisories_path has an unsupported extension (not .parquet or .csv).
     """
     reports_directory = Path(report_dir) if report_dir else DECISION_SUPPORT_REPORTS_DIR
     reports_directory.mkdir(parents=True, exist_ok=True)
@@ -325,9 +335,15 @@ def save_decision_support_artifacts(
     # 1. Save Advisories Dataset if path provided
     if output_advisories_path:
         out_path = Path(output_advisories_path)
+        out_ext = out_path.suffix.lower()
+        if out_ext not in SUPPORTED_ADVISORY_EXTENSIONS:
+            raise ValueError(
+                f"Unsupported output advisories file format '{out_path.suffix}'. "
+                f"Must be one of: {sorted(SUPPORTED_ADVISORY_EXTENSIONS)}."
+            )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Saving session advisories dataset (%d rows) to %s", len(advisories_df), out_path)
-        if out_path.suffix.lower() == ".parquet":
+        if out_ext == ".parquet":
             advisories_df.to_parquet(out_path, index=False)
         else:
             advisories_df.to_csv(out_path, index=False)

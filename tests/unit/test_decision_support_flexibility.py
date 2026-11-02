@@ -2,6 +2,7 @@
 
 Validates:
 - Availability detection and graceful fallback on empty, None, or missing schema inputs.
+- Ensuring unavailable results do not return fabricated statistics, counts, or distributions.
 - Accurate calendar date classification in Europe/London (same-day vs overnight).
 - Exact calculation of charging-to-connection duration ratios:
   (ChargingDuration / 60.0) / (StopTime - StartTime in hours).
@@ -22,17 +23,23 @@ from tarang.decision_support.flexibility import (
 
 
 def test_flexibility_empty_and_none() -> None:
-    """Test flexibility analysis graceful fallback on empty or None inputs."""
+    """Test flexibility analysis graceful fallback on empty or None inputs without fabricated stats."""
     res_none = analyze_charging_flexibility(None)  # type: ignore
     assert res_none["available"] is False
     assert "empty or None" in res_none["reason"]
-    assert res_none["same_day_total"] == 0
-    assert len(res_none["bin_edges"]) == 26
+    assert res_none["missing_columns"] is None
+    # Must NOT contain fabricated statistics or distributions
+    assert "same_day_total" not in res_none
+    assert "same_day_median_ratio" not in res_none
+    assert "bin_edges" not in res_none
 
     res_empty = analyze_charging_flexibility(pd.DataFrame())
     assert res_empty["available"] is False
     assert "empty or None" in res_empty["reason"]
-    assert res_empty["same_day_total"] == 0
+    assert res_empty["missing_columns"] is None
+    assert "same_day_total" not in res_empty
+    assert "same_day_median_ratio" not in res_empty
+    assert "bin_edges" not in res_empty
 
 
 def test_flexibility_missing_columns() -> None:
@@ -41,9 +48,13 @@ def test_flexibility_missing_columns() -> None:
     res = analyze_charging_flexibility(df_missing)
 
     assert res["available"] is False
-    assert "Missing required column(s)" in res["reason"]
-    assert "ChargingDuration" in res["reason"]
-    assert "StopTime" in res["reason"]
+    assert "Missing required historical column(s)" in res["reason"]
+    assert res["missing_columns"] == ["ChargingDuration", "StopTime"]
+    # Must NOT contain fabricated statistics or distributions
+    assert "same_day_total" not in res
+    assert "overnight_total" not in res
+    assert "same_day_median_ratio" not in res
+    assert "bin_edges" not in res
 
 
 def test_flexibility_date_classification_europe_london() -> None:
@@ -80,6 +91,7 @@ def test_flexibility_date_classification_europe_london() -> None:
 
     assert res["available"] is True
     assert res["reason"] is None
+    assert res["missing_columns"] is None
     assert res["same_day_total"] == 1
     assert res["overnight_total"] == 2
     assert res["same_day_in_range"] == 1

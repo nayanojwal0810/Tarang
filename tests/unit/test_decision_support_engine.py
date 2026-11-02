@@ -3,11 +3,14 @@
 Validates:
 - Single-session advisory generation from arrival parameters and pre-built features.
 - SessionAdvisory dataclass immutability.
-- Prediction validity checks for non-negativity and finiteness.
+- Numeric validity checks for non-negativity and finiteness.
 - Projected unplug timestamp calculations in UTC.
 - Assignment of pd.NaT when duration predictions are negative or non-finite.
 - Batch advisories schema, column retention, and index alignment (including duplicate indices).
 - Input error handling (missing StartTime, empty DataFrame, invalid types).
+- Strict arrival timestamp validation (NaT, null, malformed strings rejected before model invocation).
+- Support for naive UTC timestamps and timezone-aware timestamps converted to UTC.
+- Regression testing for target leakage invariance.
 """
 
 from __future__ import annotations
@@ -35,8 +38,10 @@ class MockEstimator:
 
     def __init__(self, return_val: float) -> None:
         self.return_val = return_val
+        self.call_count = 0
 
     def predict(self, X: Any) -> np.ndarray:
+        self.call_count += 1
         n_samples = len(X)
         return np.full(n_samples, self.return_val, dtype=np.float64)
 
@@ -284,3 +289,109 @@ def test_batch_advisories_error_handling(mock_models: dict[str, Any]) -> None:
     df_no_start = pd.DataFrame([{col: 1.0 for col in FEATURE_NAMES}])
     with pytest.raises(ValueError, match="StartTime"):
         engine.predict_batch_advisories(df_no_start)
+
+
+def test_batch_timestamp_validation_rejects_invalid_before_model_invocation() -> None:
+    """Verify that NaT, null, and malformed timestamps are rejected BEFORE calling models."""
+    mock_dur = MockEstimator(return_val=5.0)
+    mock_ene = MockEstimator(return_val=10.0)
+    engine = DecisionSupportEngine(
+        duration_model=mock_dur,
+        energy_model=mock_ene,
+    )
+
+    base_row = {col: 1.0 for col in FEATURE_NAMES}
+
+    # Case 1: StartTime = pd.NaT
+    df_nat = pd.DataFrame([{**base_row, "StartTime": pd.NaT}])
+    with pytest.raises(ValueError, match="missing or null/NaT"):
+        engine.predict_batch_advisories(df_nat)
+    assert mock_dur.call_count == 0
+    assert mock_ene.call_count == 0
+
+    # Case 2: StartTime = None
+    df_none = pd.DataFrame([{**base_row, "StartTime": None}])
+    with pytest.raises(ValueError, match="missing or null/NaT"):
+        engine.predict_batch_advisories(df_none)
+    assert mock_dur.call_count == 0
+    assert mock_ene.call_count == 0
+
+    # Case 3: StartTime = malformed string
+    df_malformed = pd.DataFrame([{**base_row, "StartTime": "not-a-timestamp-12345"}])
+    with pytest.raises(ValueError, match="Failed to parse 'StartTime'"):
+        engine.predict_batch_advisories(df_malformed)
+    assert mock_dur.call_count == 0
+    assert mock_ene.call_count == 0
+
+
+def test_batch_timestamp_valid_formats(mock_models: dict[str, Any]) -> None:
+    """Test valid naive and timezone-aware timestamps are parsed into UTC."""
+    engine = DecisionSupportEngine(
+        duration_model=mock_models["duration"],
+        energy_model=mock_models["energy"],
+    )
+
+    base_row = {col: 1.0 for col in FEATURE_NAMES}
+
+    # 1. Naive string treated as UTC
+    df_naive = pd.DataFrame([{**base_row, "StartTime": "2018-05-15 18:00:00"}])
+    res_naive = engine.predict_batch_advisories(df_naive)
+    assert res_naive["projected_unplug_time_utc"].iloc[0] == pd.Timestamp("2018-05-16 02:30:00", tz="UTC")
+
+    # 2. Timezone-aware timestamp (Europe/London BST UTC+1: 11:00 BST -> 10:00 UTC)
+    london_ts = pd.Timestamp("2018-06-15 11:00:00", tz="Europe/London")
+    df_aware = pd.DataFrame([{**base_row, "StartTime": london_ts}])
+    res_aware = engine.predict_batch_advisories(df_aware)
+    # 10:00 UTC + 8.5h duration = 18:30 UTC
+    assert res_aware["projected_unplug_time_utc"].iloc[0] == pd.Timestamp("2018-06-15 18:30:00", tz="UTC")
+
+
+def test_target_leakage_invariance() -> None:
+    """Verify that predictions and unplug timings are invariant to actual outcomes (StopTime, ConsumedkWh, ChargingDuration)."""
+    # Deterministic model whose prediction depends on LastDuration and LastConsumedkWh
+    class FeatureBasedEstimator:
+        def predict(self, X: Any) -> np.ndarray:
+            return (X["LastDuration"].to_numpy() * 1.5 + X["CarKW"].to_numpy() * 0.5).astype(np.float64)
+
+    engine = DecisionSupportEngine(
+        duration_model=FeatureBasedEstimator(),
+        energy_model=FeatureBasedEstimator(),
+    )
+
+    base_features = {
+        "StartTime": "2018-05-15 18:00:00",
+        "weekday": 1, "weekend": 0, "holiday": 0, "month": 5,
+        "StartCos": 0.5, "StartSin": 0.866, "StartHourNorm": 0.75,
+        "TimeSinceLastStop": 10.0, "sessionsToday": 0, "LastDuration": 6.0,
+        "LastConsumedkWh": 15.0, "CarKW": 7.0, "CarKWh": 40.0,
+    }
+
+    # DataFrame A has actual session outcomes
+    df_a = pd.DataFrame([{
+        **base_features,
+        "StopTime": "2018-05-16 04:00:00+00:00",
+        "ConsumedkWh": 25.5,
+        "ChargingDuration": 180.0,
+    }])
+
+    # DataFrame B has drastically different actual outcomes (e.g. 10x energy, 4 days stop time)
+    df_b = pd.DataFrame([{
+        **base_features,
+        "StopTime": "2018-05-20 12:00:00+00:00",
+        "ConsumedkWh": 999.9,
+        "ChargingDuration": 1500.0,
+    }])
+
+    res_a = engine.predict_batch_advisories(df_a)
+    res_b = engine.predict_batch_advisories(df_b)
+
+    # Verify identical duration and energy predictions
+    assert np.isclose(res_a["predicted_Duration"].iloc[0], res_b["predicted_Duration"].iloc[0])
+    assert np.isclose(res_a["predicted_ConsumedkWh"].iloc[0], res_b["predicted_ConsumedkWh"].iloc[0])
+
+    # Verify identical projected unplug timestamps
+    assert res_a["projected_unplug_time_utc"].iloc[0] == res_b["projected_unplug_time_utc"].iloc[0]
+
+    # Verify identical validity flags
+    assert res_a["duration_prediction_valid"].iloc[0] == res_b["duration_prediction_valid"].iloc[0]
+    assert res_a["energy_prediction_valid"].iloc[0] == res_b["energy_prediction_valid"].iloc[0]

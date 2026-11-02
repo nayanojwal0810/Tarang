@@ -5,13 +5,13 @@
 **Model Architecture**: `HistGradientBoostingRegressor`  
 **Source Dataset**: `data/processed/electric_nation/features.parquet`  
 **Evaluation Scope**: 59,520 charging sessions  
-**Generated At**: 2026-11-02 18:56:37 UTC  
+**Generated At**: 2026-11-02 19:16:10 UTC  
 
 ---
 
 ## 1. Predictive Session Advisories Distribution
 
-The decision support layer generates raw numeric estimates of connection duration and energy demand, verifies non-negativity and finiteness, and calculates projected departure timestamps.
+The decision support layer generates raw numeric estimates of connection duration and energy demand, performs finite and non-negative validity verification, and calculates projected departure timestamps.
 
 | Target | Unit | Total Sessions | Valid Predictions | Invalid (Flagged) | Mean | Std Dev | Min | 25% | Median (50%) | 75% | 90% | Max |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -19,27 +19,27 @@ The decision support layer generates raw numeric estimates of connection duratio
 | **ConsumedkWh** | kWh | 59,520 | 59,520 | 0 | 10.23 | 7.28 | 0.36 | 5.68 | 7.66 | 13.07 | 18.65 | 51.43 |
 
 ### Operational Advisory Integrity
-- **Non-Negativity Verification**: Estimator outputs are strictly validated via `isfinite(pred) and pred >= 0.0`. Flagged predictions retain their raw continuous estimator values without artificial clipping or thresholding.
+- **Numeric Validity Verification**: Estimator outputs are strictly validated via `isfinite(pred) and pred >= 0.0`. Flagged predictions retain their raw continuous estimator values without artificial clipping or thresholding.
 - **Occupancy Projections**: A total of **59,518 sessions (100.0%)** produced valid duration predictions and corresponding projected unplug timestamps (`projected_unplug_time_utc`). Invalid or negative duration estimates are safely represented as `NaT` (Not-a-Time) to prevent faulty bay scheduling.
 
 ---
 
 ## 2. Smart-Charging Flexibility Ratio Analysis
 
-Smart-charging flexibility is quantified as the ratio of active charging duration to total connection duration:
+Smart-charging flexibility is evaluated as the descriptive ratio of active charging duration to total connection duration:
 
 $$\text{Flexibility Ratio} = \frac{\text{ChargingDuration} / 60.0}{(\text{StopTime} - \text{StartTime})_{\text{hours}}}$$
 
-Sessions are partitioned using local UK calendar dates (`Europe/London`) into same-day arrivals versus overnight charging sessions.
+Sessions are classified using local UK calendar dates (`Europe/London`) into same-day arrivals versus overnight charging sessions.
 
-| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio |
-| :--- | :---: | :---: | :---: | :---: |
-| **Same-Day Sessions** | 21,700 | 15,947 | 0.689 | 0.780 |
-| **Overnight Sessions** | 37,820 | 29,348 | 0.188 | 0.143 |
+| Session Category | Total Sessions | Valid Ratios | Ratios in [0, 1] Histogram | Mean Ratio (All Valid) | Median Ratio (All Valid) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Same-Day Sessions** | 21,700 | 15,947 | 15,947 | 0.689 | 0.780 |
+| **Overnight Sessions** | 37,820 | 29,349 | 29,348 | 0.188 | 0.143 |
 
-### Flexibility Key Findings
-- **Overnight Flexibility Advantage**: Overnight sessions exhibit a median flexibility ratio of **0.143** (mean: **0.188**), indicating that vehicles remain plugged in idle for over 80% of their connection window. This presents substantial load shifting and renewable curtailment mitigation opportunities.
-- **Same-Day Tight Occupancy**: Same-day sessions demonstrate a median ratio of **0.780** (mean: **0.689**), reflecting shorter daytime connection spans where active charging occupies the majority of the connection.
+### Descriptive Flexibility Observations
+- **Overnight Sessions**: In the historical sample, overnight sessions exhibit an observed median ratio of **0.143** and an observed mean ratio of **0.188** calculated across all valid sessions. This descriptive ratio reflects the historical relationship between active charging duration and total plugged-in connection duration; it does not establish that the remaining connection time or energy can be shifted in practice, nor does it guarantee schedulable flexibility under operational constraints.
+- **Same-Day Sessions**: Same-day sessions exhibit an observed median ratio of **0.780** and an observed mean ratio of **0.689** across all valid sessions.
 
 
 ---

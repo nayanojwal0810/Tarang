@@ -367,23 +367,30 @@ from tarang.decision_support import DecisionSupportEngine, analyze_charging_flex
 # Initialize engine with pre-trained models
 engine = DecisionSupportEngine(model_name="HistGradientBoostingRegressor")
 
-# 1. Single-session advisory with arrival parameters and history
+# 1. Single-session advisory with arrival parameters and participant history
+history = pd.DataFrame({
+    "StartTime": [pd.Timestamp("2018-05-15 08:30:00", tz="UTC")],
+    "StopTime": [pd.Timestamp("2018-05-15 16:45:00", tz="UTC")],
+    "ConsumedkWh": [22.4],
+})
+
 advisory = engine.predict_single_advisory(
     start_time="2018-05-15 18:00:00",
     car_kw=7.0,
     car_kwh=40.0,
-    history=history_df,
+    history=history,
 )
 print(f"Arrival (UTC): {advisory.arrival_time_utc}")
 print(f"Predicted Duration: {advisory.predicted_duration_hours:.2f} hours")
 print(f"Predicted Energy: {advisory.predicted_energy_kwh:.2f} kWh")
 print(f"Projected Unplug (UTC): {advisory.projected_unplug_time_utc}")
-print(f"Duration Prediction Valid: {advisory.duration_prediction_valid}")
+print(f"Duration Numeric Validity: {advisory.duration_prediction_valid}")
 
-# 2. Batch session advisories
+# 2. Batch advisories on pre-engineered canonical features
+features_df = pd.read_parquet("data/processed/electric_nation/features.parquet")
 advisories_df = engine.predict_batch_advisories(features_df)
 
-# 3. Smart-charging flexibility analysis
+# 3. Descriptive smart-charging flexibility analysis
 flex_stats = analyze_charging_flexibility(features_df)
 print(f"Overnight Median Flexibility Ratio: {flex_stats['overnight_median_ratio']:.3f}")
 ```
