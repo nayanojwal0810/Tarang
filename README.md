@@ -120,7 +120,7 @@ pytest
 
 ## Predictions and advisory outputs
 
-TARANG supports single-session prediction using an arrival time, vehicle details, and completed session history. It also supports batch prediction from a CSV or Parquet file containing the 13 model inputs.
+TARANG supports single-session prediction using an arrival time, vehicle details, and completed session history. It also supports batch prediction from a CSV or Parquet file containing `StartTime` and the 13 model inputs.
 
 Decision support adds these fields to batch results:
 

@@ -140,22 +140,31 @@ def generate_flexibility_summary_table(
     if flexibility_stats is None or not flexibility_stats.get("available", False):
         return None
 
+    def _clean_ratio(val: Any) -> float:
+        if val is None or pd.isna(val):
+            return np.nan
+        try:
+            f = float(val)
+            return round(f, 4) if np.isfinite(f) else np.nan
+        except (ValueError, TypeError):
+            return np.nan
+
     records = [
         {
             "category": "Same-Day Sessions",
             "total_sessions": int(flexibility_stats.get("same_day_total", 0)),
             "valid_sessions": int(flexibility_stats.get("same_day_valid", 0)),
             "evaluated_in_range": int(flexibility_stats.get("same_day_in_range", 0)),
-            "mean_ratio": round(float(flexibility_stats.get("same_day_mean_ratio", 0.0)), 4),
-            "median_ratio": round(float(flexibility_stats.get("same_day_median_ratio", 0.0)), 4),
+            "mean_ratio": _clean_ratio(flexibility_stats.get("same_day_mean_ratio")),
+            "median_ratio": _clean_ratio(flexibility_stats.get("same_day_median_ratio")),
         },
         {
             "category": "Overnight Sessions",
             "total_sessions": int(flexibility_stats.get("overnight_total", 0)),
             "valid_sessions": int(flexibility_stats.get("overnight_valid", 0)),
             "evaluated_in_range": int(flexibility_stats.get("overnight_in_range", 0)),
-            "mean_ratio": round(float(flexibility_stats.get("overnight_mean_ratio", 0.0)), 4),
-            "median_ratio": round(float(flexibility_stats.get("overnight_median_ratio", 0.0)), 4),
+            "mean_ratio": _clean_ratio(flexibility_stats.get("overnight_mean_ratio")),
+            "median_ratio": _clean_ratio(flexibility_stats.get("overnight_median_ratio")),
         },
     ]
 
@@ -208,21 +217,32 @@ def generate_decision_support_markdown_report(
 
     # Format flexibility markdown table if available
     if flex_df is not None and flexibility_stats is not None and flexibility_stats.get("available", False):
+        def _fmt_r(val: Any) -> str:
+            if val is None or pd.isna(val):
+                return "N/A"
+            try:
+                f = float(val)
+                return f"{f:.3f}" if np.isfinite(f) else "N/A"
+            except (ValueError, TypeError):
+                return "N/A"
+
         flex_table_lines = [
             "| Session Category | Total Sessions | Valid Ratios | Ratios in [0, 1] Histogram | Mean Ratio (All Valid) | Median Ratio (All Valid) |",
             "| :--- | :---: | :---: | :---: | :---: | :---: |",
         ]
         for _, row in flex_df.iterrows():
+            mean_str = _fmt_r(row["mean_ratio"])
+            median_str = _fmt_r(row["median_ratio"])
             flex_table_lines.append(
                 f"| **{row['category']}** | {row['total_sessions']:,} | {row['valid_sessions']:,} | "
-                f"{row['evaluated_in_range']:,} | {row['mean_ratio']:.3f} | {row['median_ratio']:.3f} |"
+                f"{row['evaluated_in_range']:,} | {mean_str} | {median_str} |"
             )
         flex_table_md = "\n".join(flex_table_lines)
 
-        same_day_mean = flexibility_stats.get("same_day_mean_ratio", 0.0)
-        same_day_median = flexibility_stats.get("same_day_median_ratio", 0.0)
-        overnight_mean = flexibility_stats.get("overnight_mean_ratio", 0.0)
-        overnight_median = flexibility_stats.get("overnight_median_ratio", 0.0)
+        same_day_mean = _fmt_r(flexibility_stats.get("same_day_mean_ratio"))
+        same_day_median = _fmt_r(flexibility_stats.get("same_day_median_ratio"))
+        overnight_mean = _fmt_r(flexibility_stats.get("overnight_mean_ratio"))
+        overnight_median = _fmt_r(flexibility_stats.get("overnight_median_ratio"))
 
         flexibility_section = f"""## 2. Smart-Charging Flexibility Ratio Analysis
 
@@ -235,8 +255,8 @@ Sessions are classified using local UK calendar dates (`Europe/London`) into sam
 {flex_table_md}
 
 ### Descriptive Flexibility Observations
-- **Overnight Sessions**: In the historical sample, overnight sessions exhibit an observed median ratio of **{overnight_median:.3f}** and an observed mean ratio of **{overnight_mean:.3f}** calculated across all valid sessions. This descriptive ratio reflects the historical relationship between active charging duration and total plugged-in connection duration; it does not establish that the remaining connection time or energy can be shifted in practice, nor does it guarantee schedulable flexibility under operational constraints.
-- **Same-Day Sessions**: Same-day sessions exhibit an observed median ratio of **{same_day_median:.3f}** and an observed mean ratio of **{same_day_mean:.3f}** across all valid sessions.
+- **Overnight Sessions**: In the historical sample, overnight sessions exhibit an observed median ratio of **{overnight_median}** and an observed mean ratio of **{overnight_mean}** calculated across all valid sessions. This descriptive ratio reflects the historical relationship between active charging duration and total plugged-in connection duration; it does not establish that the remaining connection time or energy can be shifted in practice, nor does it guarantee schedulable flexibility under operational constraints.
+- **Same-Day Sessions**: Same-day sessions exhibit an observed median ratio of **{same_day_median}** and an observed mean ratio of **{same_day_mean}** across all valid sessions.
 """
     else:
         reason = (
@@ -330,6 +350,10 @@ def save_decision_support_artifacts(
     reports_directory = Path(report_dir) if report_dir else DECISION_SUPPORT_REPORTS_DIR
     reports_directory.mkdir(parents=True, exist_ok=True)
 
+    pred_summary_path = (reports_directory / "prediction_summary.csv").resolve()
+    flex_summary_path = (reports_directory / "flexibility_summary.csv").resolve()
+    report_path = (reports_directory / "decision_support_summary.md").resolve()
+
     artifacts: Dict[str, Path] = {}
 
     # 1. Save Advisories Dataset if path provided
@@ -341,6 +365,23 @@ def save_decision_support_artifacts(
                 f"Unsupported output advisories file format '{out_path.suffix}'. "
                 f"Must be one of: {sorted(SUPPORTED_ADVISORY_EXTENSIONS)}."
             )
+
+        resolved_out = out_path.resolve()
+
+        # Check collision with input source file
+        if source_file is not None:
+            resolved_source = Path(source_file).resolve()
+            if resolved_out == resolved_source:
+                raise ValueError(
+                    f"Output advisories path '{out_path}' cannot overwrite source dataset '{source_file}'."
+                )
+
+        # Check collision with generated report files
+        if resolved_out in {pred_summary_path, flex_summary_path, report_path}:
+            raise ValueError(
+                f"Output advisories path '{out_path}' conflicts with generated report file '{resolved_out}'."
+            )
+
         out_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Saving session advisories dataset (%d rows) to %s", len(advisories_df), out_path)
         if out_ext == ".parquet":
@@ -351,18 +392,20 @@ def save_decision_support_artifacts(
 
     # 2. Save Prediction Summary CSV
     pred_summary_df = generate_prediction_summary_table(advisories_df)
-    pred_summary_path = reports_directory / "prediction_summary.csv"
     logger.info("Saving prediction summary table to %s", pred_summary_path)
     pred_summary_df.to_csv(pred_summary_path, index=False)
     artifacts["prediction_summary"] = pred_summary_path
 
-    # 3. Save Flexibility Summary CSV if available
+    # 3. Save Flexibility Summary CSV if available, or clean up stale file
     flex_df = generate_flexibility_summary_table(flexibility_stats)
     if flex_df is not None:
-        flex_summary_path = reports_directory / "flexibility_summary.csv"
         logger.info("Saving flexibility summary table to %s", flex_summary_path)
         flex_df.to_csv(flex_summary_path, index=False)
         artifacts["flexibility_summary"] = flex_summary_path
+    else:
+        if flex_summary_path.is_file():
+            logger.info("Removing stale flexibility summary file: %s", flex_summary_path)
+            flex_summary_path.unlink()
 
     # 4. Save Markdown Summary Report
     report_md = generate_decision_support_markdown_report(

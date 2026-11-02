@@ -284,3 +284,75 @@ def test_canonical_dataset_decision_support(tmp_path: Path) -> None:
     assert artifacts["prediction_summary"].is_file()
     assert artifacts["flexibility_summary"].is_file()
     assert artifacts["report"].is_file()
+
+
+def test_output_path_collision_guards(mock_environment: dict[str, Path], tmp_path: Path) -> None:
+    """Verify both API and CLI reject output paths that overwrite input data or report files."""
+    base_dir = mock_environment["base_dir"]
+    input_file = mock_environment["input_file"]
+    df = pd.read_parquet(input_file)
+    engine = DecisionSupportEngine(model_name="LinearRegression", models_dir=base_dir)
+    advisories = engine.predict_batch_advisories(df)
+    report_dir = tmp_path / "collision_reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    # API Case 1: Overwriting source dataset
+    with pytest.raises(ValueError, match="cannot overwrite source dataset"):
+        save_decision_support_artifacts(
+            advisories_df=advisories,
+            output_advisories_path=input_file,
+            report_dir=report_dir,
+            source_file=input_file,
+        )
+
+    # API Case 2: Overwriting generated report summary
+    with pytest.raises(ValueError, match="conflicts with generated report file"):
+        save_decision_support_artifacts(
+            advisories_df=advisories,
+            output_advisories_path=report_dir / "prediction_summary.csv",
+            report_dir=report_dir,
+        )
+
+    # CLI Case 1: --output matches --input
+    ret_self = run_cli_main([
+        "--input", str(input_file),
+        "--output", str(input_file),
+        "--models-dir", str(base_dir),
+    ])
+    assert ret_self == 1
+
+    # CLI Case 2: --output matches report file
+    ret_rep = run_cli_main([
+        "--input", str(input_file),
+        "--output", str(report_dir / "prediction_summary.csv"),
+        "--report-dir", str(report_dir),
+        "--models-dir", str(base_dir),
+    ])
+    assert ret_rep == 1
+
+
+def test_stale_flexibility_summary_removal(mock_environment: dict[str, Path], tmp_path: Path) -> None:
+    """Verify that a stale flexibility_summary.csv is deleted when flexibility is unavailable."""
+    base_dir = mock_environment["base_dir"]
+    df = pd.read_parquet(mock_environment["input_file"])
+    engine = DecisionSupportEngine(model_name="LinearRegression", models_dir=base_dir)
+    advisories = engine.predict_batch_advisories(df)
+    report_dir = tmp_path / "stale_reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create dummy pre-existing flexibility_summary.csv
+    stale_csv = report_dir / "flexibility_summary.csv"
+    stale_csv.write_text("category,total_sessions\nstale_data,999\n", encoding="utf-8")
+    assert stale_csv.is_file()
+
+    # Run save_decision_support_artifacts with unavailable flexibility
+    artifacts = save_decision_support_artifacts(
+        advisories_df=advisories,
+        flexibility_stats={"available": False, "reason": "Missing columns"},
+        report_dir=report_dir,
+        model_name="LinearRegression",
+    )
+
+    # Assert stale CSV was removed
+    assert not stale_csv.exists()
+    assert "flexibility_summary" not in artifacts

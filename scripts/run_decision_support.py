@@ -107,6 +107,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 1
 
+    # Guard against accidental output file collisions
+    try:
+        resolved_in = input_path.resolve()
+        resolved_out = output_path.resolve()
+        resolved_report_dir = report_dir.resolve()
+    except Exception as exc:
+        logger.error("Failed to resolve paths: %s", exc)
+        return 1
+
+    if resolved_in == resolved_out:
+        logger.error(
+            "Output path '%s' cannot overwrite input dataset '%s'.",
+            output_path,
+            input_path,
+        )
+        return 1
+
+    conflicting_report_files = {
+        (resolved_report_dir / "prediction_summary.csv"),
+        (resolved_report_dir / "flexibility_summary.csv"),
+        (resolved_report_dir / "decision_support_summary.md"),
+    }
+    if resolved_out in conflicting_report_files:
+        logger.error(
+            "Output path '%s' conflicts with generated report file '%s'.",
+            output_path,
+            resolved_out,
+        )
+        return 1
+
     if not input_path.is_file():
         logger.error("Input file does not exist: %s", input_path)
         return 1

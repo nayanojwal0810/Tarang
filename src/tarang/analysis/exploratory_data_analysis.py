@@ -123,10 +123,10 @@ def calculate_charging_flexibility(
             "overnight_in_range": 0,
             "same_day_count": 0,
             "overnight_count": 0,
-            "same_day_median_ratio": 0.0,
-            "overnight_median_ratio": 0.0,
-            "same_day_mean_ratio": 0.0,
-            "overnight_mean_ratio": 0.0,
+            "same_day_median_ratio": np.nan,
+            "overnight_median_ratio": np.nan,
+            "same_day_mean_ratio": np.nan,
+            "overnight_mean_ratio": np.nan,
         }
 
     # Convert to Europe/London local time for calendar date classification
@@ -138,9 +138,9 @@ def calculate_charging_flexibility(
     overnight_total = int((~is_same_day).sum())
 
     dur_plug = (stop_local - start_local).dt.total_seconds() / 3600.0
-    dur_ch = df["ChargingDuration"] / 60.0
+    dur_ch = pd.to_numeric(df["ChargingDuration"], errors="coerce") / 60.0
 
-    valid_mask = dur_ch.notna() & (dur_plug > 0)
+    valid_mask = dur_ch.notna() & np.isfinite(dur_ch) & (dur_ch >= 0.0) & np.isfinite(dur_plug) & (dur_plug > 0)
     ratio = dur_ch[valid_mask] / dur_plug[valid_mask]
 
     is_same_day_valid = is_same_day[valid_mask]
@@ -151,8 +151,8 @@ def calculate_charging_flexibility(
     same_valid_count = len(same_ratios)
     over_valid_count = len(over_ratios)
 
-    same_hist, _ = np.histogram(same_ratios, bins=bins)
-    over_hist, _ = np.histogram(over_ratios, bins=bins)
+    same_hist, _ = np.histogram(same_ratios[(same_ratios >= 0.0) & (same_ratios <= 1.0)], bins=bins)
+    over_hist, _ = np.histogram(over_ratios[(over_ratios >= 0.0) & (over_ratios <= 1.0)], bins=bins)
 
     same_in_range = int(same_hist.sum())
     over_in_range = int(over_hist.sum())
@@ -172,10 +172,10 @@ def calculate_charging_flexibility(
         "overnight_in_range": over_in_range,
         "same_day_count": same_in_range,  # Evaluated in-range ratio count
         "overnight_count": over_in_range,
-        "same_day_median_ratio": round(float(same_ratios.median()), 4) if not same_ratios.empty else 0.0,
-        "overnight_median_ratio": round(float(over_ratios.median()), 4) if not over_ratios.empty else 0.0,
-        "same_day_mean_ratio": round(float(same_ratios.mean()), 4) if not same_ratios.empty else 0.0,
-        "overnight_mean_ratio": round(float(over_ratios.mean()), 4) if not over_ratios.empty else 0.0,
+        "same_day_median_ratio": round(float(same_ratios.median()), 4) if not same_ratios.empty else np.nan,
+        "overnight_median_ratio": round(float(over_ratios.median()), 4) if not over_ratios.empty else np.nan,
+        "same_day_mean_ratio": round(float(same_ratios.mean()), 4) if not same_ratios.empty else np.nan,
+        "overnight_mean_ratio": round(float(over_ratios.mean()), 4) if not over_ratios.empty else np.nan,
     }
 
 

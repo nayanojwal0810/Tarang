@@ -134,3 +134,43 @@ def test_flexibility_parity_with_eda() -> None:
     assert ds_res["overnight_median_ratio"] == eda_res["overnight_median_ratio"]
     assert ds_res["same_day_pct"] == eda_res["same_day_pct"]
     assert ds_res["overnight_pct"] == eda_res["overnight_pct"]
+
+
+def test_flexibility_charging_duration_validation_and_empty_categories() -> None:
+    """Verify invalid ChargingDuration values are excluded, zero duration is preserved, and empty category yields NaN."""
+    import numpy as np
+
+    # Sessions:
+    # 1. Same-day: ChargingDuration = 0.0 (valid zero ratio: 0.0 / 4h = 0.0)
+    # 2. Same-day: ChargingDuration = -30.0 (negative, invalid, excluded)
+    # 3. Same-day: ChargingDuration = np.nan (null, invalid, excluded)
+    # 4. Same-day: ChargingDuration = np.inf (infinite, invalid, excluded)
+    # 5. Overnight: ChargingDuration = -60.0 (all overnight invalid -> 0 valid observations)
+    rows = [
+        {"StartTime": "2018-05-15 10:00:00+00:00", "StopTime": "2018-05-15 14:00:00+00:00", "ChargingDuration": 0.0},
+        {"StartTime": "2018-05-15 11:00:00+00:00", "StopTime": "2018-05-15 15:00:00+00:00", "ChargingDuration": -30.0},
+        {"StartTime": "2018-05-15 12:00:00+00:00", "StopTime": "2018-05-15 16:00:00+00:00", "ChargingDuration": np.nan},
+        {"StartTime": "2018-05-15 13:00:00+00:00", "StopTime": "2018-05-15 17:00:00+00:00", "ChargingDuration": np.inf},
+        {"StartTime": "2018-05-15 20:00:00+00:00", "StopTime": "2018-05-16 06:00:00+00:00", "ChargingDuration": -60.0},
+    ]
+    df = pd.DataFrame(rows)
+    res = analyze_charging_flexibility(df, n_bins=25)
+
+    assert res["available"] is True
+    # Total counts are preserved based on all sessions
+    assert res["same_day_total"] == 4
+    assert res["overnight_total"] == 1
+
+    # Valid session counts reflect filtering
+    assert res["same_day_valid"] == 1
+    assert res["overnight_valid"] == 0
+
+    # Same-day has 1 valid observation (ratio = 0.0)
+    assert res["same_day_mean_ratio"] == 0.0
+    assert res["same_day_median_ratio"] == 0.0
+    assert res["same_day_in_range"] == 1
+
+    # Overnight has 0 valid observations -> represented as NaN (not measured 0.0)
+    assert np.isnan(res["overnight_mean_ratio"])
+    assert np.isnan(res["overnight_median_ratio"])
+    assert res["overnight_in_range"] == 0

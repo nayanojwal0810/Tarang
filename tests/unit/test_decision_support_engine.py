@@ -347,10 +347,14 @@ def test_batch_timestamp_valid_formats(mock_models: dict[str, Any]) -> None:
 
 
 def test_target_leakage_invariance() -> None:
-    """Verify that predictions and unplug timings are invariant to actual outcomes (StopTime, ConsumedkWh, ChargingDuration)."""
+    """Verify that predictions and unplug timings are invariant to actual outcomes and estimators receive only FEATURE_NAMES."""
+    received_features: list[list[str]] = []
+
     # Deterministic model whose prediction depends on LastDuration and LastConsumedkWh
     class FeatureBasedEstimator:
         def predict(self, X: Any) -> np.ndarray:
+            if isinstance(X, pd.DataFrame):
+                received_features.append(list(X.columns))
             return (X["LastDuration"].to_numpy() * 1.5 + X["CarKW"].to_numpy() * 0.5).astype(np.float64)
 
     engine = DecisionSupportEngine(
@@ -395,3 +399,10 @@ def test_target_leakage_invariance() -> None:
     # Verify identical validity flags
     assert res_a["duration_prediction_valid"].iloc[0] == res_b["duration_prediction_valid"].iloc[0]
     assert res_a["energy_prediction_valid"].iloc[0] == res_b["energy_prediction_valid"].iloc[0]
+
+    # Verify estimators received exactly FEATURE_NAMES without target/outcome leakage
+    assert len(received_features) >= 4  # 2 calls per predict_batch_advisories (duration + energy)
+    for cols in received_features:
+        assert cols == FEATURE_NAMES
+        for leakage_col in ["StopTime", "ConsumedkWh", "ChargingDuration"]:
+            assert leakage_col not in cols
