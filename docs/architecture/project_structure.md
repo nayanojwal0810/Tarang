@@ -40,49 +40,11 @@ Tarang/
 |       |-- data_dictionary.md       # Raw and canonical column definitions, units, and ranges
 |
 |-- reports/
-|   |-- data_audit/
-|   |   |-- dataset_audit_report.md  # Comprehensive data quality and feasibility audit report
-|   |   |-- transaction_quality_summary.csv
-|   |   |-- metadata_quality_summary.csv
-|   |   |-- participant_reconciliation.csv
-|   |   |-- feature_feasibility.csv
-|   |-- eda/
-|       |-- eda_summary.md           # Descriptive EDA findings and flexibility analysis
-|       |-- data_availability.png    # 4-panel participant availability distributions
-|       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour
-|       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour
-|       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
+|   |-- data_audit/                  # Quality audit report (dataset_audit_report.md) and CSV summaries
+|   |-- eda/                         # Exploratory data analysis report (eda_summary.md) and visual plots
 |   |-- modeling/
-|       |-- duration/
-|       |   |-- evaluation_summary.md # Comprehensive Stage 3 duration evaluation report
-|       |   |-- performance.png       # Error boxplots across 6 benchmark models
-|       |   |-- best_model.png        # Histogram of HGBR error (all sessions vs per vehicle)
-|       |   |-- performance_over_features.png # Behavioral regressions (OLS against MdAPE)
-|       |   |-- model_agreement.png   # Pairwise model agreement with inset zoom
-|       |   |-- ae_over_time_hist.png # Relative change in MAE across test split
-|       |   |-- seasonality.png       # Monthly average MAPE over time (Train vs Test)
-|       |   |-- shap_values.png       # TreeSHAP global and participant-level feature importances
-|       |   |-- same_day_overnight_comparison.png # Subgroup performance comparison
-|       |   |-- heatmap-best-{0,1,2}.png # 4-state charging occupancy heatmaps
-|       |   |-- heatmap-worst-{0,1,2}.png
-|       |   |-- model_performance.csv
-|       |   |-- shap_global_importance.csv
-|       |   |-- shap_vehicle_importance.csv
-|       |   |-- same_day_overnight_metrics.csv
-|       |-- energy/
-|           |-- evaluation_summary.md
-|           |-- performance.png
-|           |-- best_model.png
-|           |-- performance_over_features.png
-|           |-- model_agreement.png
-|           |-- ae_over_time_hist.png
-|           |-- seasonality.png
-|           |-- shap_values.png
-|           |-- same_day_overnight_comparison.png
-|           |-- model_performance.csv
-|           |-- shap_global_importance.csv
-|           |-- shap_vehicle_importance.csv
-|           |-- same_day_overnight_metrics.csv
+|       |-- duration/                # Duration evaluation report, figures, heatmaps, and metrics
+|       |-- energy/                  # Energy evaluation report, figures, and metrics
 |
 |-- scripts/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
@@ -91,7 +53,6 @@ Tarang/
 |   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
 |   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
 |   |-- run_inference.py             # CLI entry point: batch inference on pre-engineered feature sets
-|   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
 |   |-- tarang/
@@ -106,7 +67,6 @@ Tarang/
 |       |   |-- preparation.py       # High-level pipeline orchestration and parquet persistence
 |       |   |-- audit_reporting.py   # Dynamic Markdown and CSV audit report generator
 |       |   |-- audit.py             # Backward-compatible facade for legacy audit calls
-|       |   |-- preprocessing.py     # Backward-compatible facade for legacy preprocessing calls
 |       |-- features/                # Feature engineering modules
 |       |   |-- __init__.py
 |       |   |-- calendar_features.py # UK Bank Holidays, weekend/weekday override, day indicators
@@ -140,27 +100,12 @@ Tarang/
 |           |-- eda_plots.py         # Multi-panel Matplotlib figures with marginal distributions
 |
 |-- tests/
-|   |-- __init__.py
-|   |-- unit/                        # Fast, isolated unit test suite
-|   |   |-- test_audit.py
-|   |   |-- test_loading.py
-|   |   |-- test_screening.py
-|   |   |-- test_features.py
-|   |   |-- test_eda.py
-|   |   |-- test_modeling.py
-|   |   |-- test_inference_feature_builder.py
-|   |   |-- test_inference_engine.py
-|   |-- integration/                 # End-to-end integration tests on real workbooks and datasets
-|       |-- test_data_pipeline.py
-|       |-- test_modeling_pipeline.py
-|       |-- test_evaluation_pipeline.py
-|       |-- test_inference_pipeline.py
+|   |-- unit/                        # Fast, isolated unit test suite (audit, screening, features, modeling, inference)
+|   |-- integration/                 # End-to-end integration tests on real and synthetic pipelines
 |
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
-|-- pytest.ini                       # Test configuration
-|-- requirements.txt                 # Lower-bounded dependencies
-|-- README.md
+|-- README.md                        # User-facing overview, quickstart, and inference guide
 ```
 
 ---
@@ -191,7 +136,7 @@ Tarang/
   11. Lag calculations: `sessionsToday` via consecutive-date cumulative counts; `LastDuration` and `LastConsumedkWh` assigned from pre-drop participant history (`dfp.shift(1)[1:]`) so the first retained session receives the dropped preceding session's values.
 - **`preparation.py`**: High-level runner that executes screening, validates canonical schema, and persists `features.parquet` (59,520 sessions, 267 participants, 30 columns) and `processing_summary.json`.
 - **`audit_reporting.py`**: Formats and exports audit metrics into Markdown (`dataset_audit_report.md`) and CSV summaries.
-- **`audit.py` & `preprocessing.py`**: Re-export facades maintaining seamless backward compatibility for existing code and imports.
+- **`audit.py`**: Re-export facade maintaining backward compatibility for legacy audit calls.
 
 ### 3.3 `tarang.features`
 - **`calendar_features.py`**: Implements UK Bank Holiday calendar lookup (exact 13 trial holidays across 2017–2018), holiday override (on holidays both `weekend=0` and `weekday=0`), and 7 binary day-of-week indicators (`Mon` through `Sun`).

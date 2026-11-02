@@ -20,66 +20,26 @@ Tarang/
 |   |-- processed/
 |       |-- electric_nation/         # Canonical Parquet dataset and summary JSON (excluded from Git)
 |
-|-- docs/
-|   |-- architecture/
-|   |   |-- project_structure.md     # Architectural design and module responsibilities
-|   |-- data/
-|       |-- data_contract.md         # Data contracts, anti-leakage rules, and screening specifications
-|       |-- data_dictionary.md       # Raw and canonical column definitions, units, and ranges
+|-- docs/                            # In-depth architectural, data, and inference documentation
+|   |-- architecture/project_structure.md
+|   |-- data/data_contract.md
+|   |-- data/data_dictionary.md
+|   |-- inference/inference_contract.md
 |
-|-- reports/
-|   |-- data_audit/
-|   |   |-- dataset_audit_report.md  # Comprehensive data quality and feasibility audit report
-|   |   |-- transaction_quality_summary.csv
-|   |   |-- metadata_quality_summary.csv
-|   |   |-- participant_reconciliation.csv
-|   |   |-- feature_feasibility.csv
-|   |-- eda/
-|       |-- eda_summary.md           # Descriptive EDA findings and flexibility analysis
-|       |-- data_availability.png    # 4-panel participant availability distributions (26 bins)
-|       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour (0.5h bins, Europe/London)
-|       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour (0.5h, 0.5 kWh bins, Europe/London)
-|       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
-|   |-- modeling/
+|-- reports/                         # Research findings, audit reports, and visual assets
+|   |-- data_audit/                  # Feasibility and quality audit report and CSV summaries
+|   |-- eda/                         # Exploratory data analysis report and distribution plots
+|   |-- modeling/                    # Stage 3 evaluation summaries, SHAP plots, and metric tables
 |       |-- duration/
-|       |   |-- evaluation_summary.md # Comprehensive Stage 3 duration evaluation report
-|       |   |-- performance.png       # Side-by-side error boxplots across 6 benchmark models
-|       |   |-- best_model.png        # Histogram of HGBR error (all sessions vs per vehicle)
-|       |   |-- performance_over_features.png # MdAPE dependence on behavioral characteristics (OLS fits)
-|       |   |-- model_agreement.png   # Pairwise model agreement with inset zoom
-|       |   |-- ae_over_time_hist.png # Relative change in MAE across test split
-|       |   |-- seasonality.png       # Monthly average MAPE over time (Train vs Test)
-|       |   |-- shap_values.png       # TreeSHAP global and participant-level feature importances
-|       |   |-- same_day_overnight_comparison.png # Subgroup performance comparison
-|       |   |-- heatmap-best-{0,1,2}.png # 4-state charging occupancy heatmaps for top vehicles
-|       |   |-- heatmap-worst-{0,1,2}.png # 4-state charging occupancy heatmaps for bottom vehicles
-|       |   |-- model_performance.csv # Benchmark performance table (All data + Per vehicle mean)
-|       |   |-- shap_global_importance.csv
-|       |   |-- shap_vehicle_importance.csv
-|       |   |-- same_day_overnight_metrics.csv
 |       |-- energy/
-|           |-- evaluation_summary.md # Comprehensive Stage 3 energy evaluation report
-|           |-- performance.png
-|           |-- best_model.png
-|           |-- performance_over_features.png
-|           |-- model_agreement.png
-|           |-- ae_over_time_hist.png
-|           |-- seasonality.png
-|           |-- shap_values.png
-|           |-- same_day_overnight_comparison.png
-|           |-- model_performance.csv
-|           |-- shap_global_importance.csv
-|           |-- shap_vehicle_importance.csv
-|           |-- same_day_overnight_metrics.csv
 |
-|-- scripts/
-|   |-- run_data_audit.py            # CLI entry point: run data quality audit
-|   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
-|   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
-|   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
-|   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
-|   |-- run_inference.py             # CLI entry point: batch prediction on pre-engineered features
-|   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
+|-- scripts/                         # Canonical pipeline CLI entry points
+|   |-- run_data_audit.py            # Stage 1: Data quality and reconciliation audit
+|   |-- prepare_data.py              # Stage 1: Screening and 13-feature engineering
+|   |-- run_eda.py                   # Stage 1: Descriptive EDA and flexibility analysis
+|   |-- run_modeling.py              # Stage 2: Dual-target predictive modeling benchmark
+|   |-- run_evaluation.py            # Stage 3: Model evaluation, TreeSHAP, and subgroup analysis
+|   |-- run_inference.py             # Stage 4: Batch prediction on pre-engineered features
 |
 |-- src/
 |   |-- tarang/
@@ -94,7 +54,6 @@ Tarang/
 |       |   |-- preparation.py       # High-level pipeline orchestration and parquet persistence
 |       |   |-- audit_reporting.py   # Dynamic Markdown and CSV audit report generator
 |       |   |-- audit.py             # Re-export facade maintaining legacy compatibility
-|       |   |-- preprocessing.py     # Re-export facade maintaining legacy compatibility
 |       |-- features/                # Feature engineering modules
 |       |   |-- __init__.py
 |       |   |-- calendar_features.py # Exact 13 UK Bank Holidays, binary weekday/weekend, day indicators
@@ -127,28 +86,13 @@ Tarang/
 |           |-- __init__.py
 |           |-- eda_plots.py         # Multi-panel Matplotlib figures with marginal distributions
 |
-|-- tests/
-|   |-- __init__.py
+|-- tests/                           # Complete pytest test suite (121 unit & integration tests)
 |   |-- unit/                        # Fast, isolated unit test suite
-|   |   |-- test_audit.py
-|   |   |-- test_loading.py
-|   |   |-- test_screening.py
-|   |   |-- test_features.py
-|   |   |-- test_eda.py
-|   |   |-- test_modeling.py
-|   |   |-- test_inference_feature_builder.py
-|   |   |-- test_inference_engine.py
-|   |-- integration/                 # End-to-end integration tests on real workbooks and datasets
-|       |-- test_data_pipeline.py
-|       |-- test_modeling_pipeline.py
-|       |-- test_evaluation_pipeline.py
-|       |-- test_inference_pipeline.py
+|   |-- integration/                 # End-to-end integration and pipeline tests
 |
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
-|-- pytest.ini                       # Test runner configuration
-|-- requirements.txt                 # Lower-bounded dependencies
-|-- README.md
+|-- README.md                        # User-facing overview, quickstart, and inference guide
 ```
 
 ---
@@ -188,40 +132,25 @@ All predictors are strictly evaluated at arrival time $t_0 = \text{StartTime}$ (
 
 ### Canonical Processed Dataset
 
-The pipeline produces a single canonical Parquet dataset:
+The deterministic screening and engineering pipeline generates the canonical modeling dataset:
 - **Location**: `data/processed/electric_nation/features.parquet`
-- **Dimensions**: Exactly **59,520 rows $\times$ 30 columns**
-- **Canonical Column Sequence**:
-  1. `StartTime`
-  2. `StopTime`
-  3. `ParticipantID`
-  4. `ConsumedkWh`
-  5. `CarKW`
-  6. `CarKWh`
-  7. `PluggedInTime`
-  8. `ChargingDuration`
-  9. `Hot_Unplug`
-  10. `Duration`
-  11. `weekday`
-  12. `weekend`
-  13. `holiday`
-  14. `Mon`
-  15. `Tue`
-  16. `Wed`
-  17. `Thu`
-  18. `Fri`
-  19. `Sat`
-  20. `Sun`
-  21. `month`
-  22. `StartHour`
-  23. `StartHourNorm`
-  24. `StartCos`
-  25. `StartSin`
-  26. `TimeSinceLastStop`
-  27. `sessionsToday`
-  28. `LastDuration`
-  29. `LastConsumedkWh`
-  30. `id` (integer group enumeration index from original participant grouping; non-contiguous)
+- **Dimensions**: Exactly **59,520 rows $\times$ 30 columns** across 267 screened participants.
+- **Data Dictionary**: See [docs/data/data_dictionary.md](docs/data/data_dictionary.md) for full definitions, units, types, and value ranges for all 30 columns.
+- **Data Contract**: See [docs/data/data_contract.md](docs/data/data_contract.md) for the authoritative screening sequence, feature availability, and anti-leakage rules.
+
+---
+
+## Project Stages & Current Progress
+
+TARANG follows an established 7-stage architectural roadmap:
+
+1. **Stage 1 — Foundation & Data Pipeline** (Completed): Ingestion, audit, deterministic screening, 13 features, and descriptive EDA.
+2. **Stage 2 — Benchmark Predictive Modeling** (Completed): Dual-target benchmark models (LR, QR, HGBR) and baselines (Mean, Median, LastValue).
+3. **Stage 3 — Model Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
+4. **Stage 4 — Inference** (Completed): High-performance batch and single-session prediction engine, feature schema enforcement, lag state retrieval, and CLI tooling.
+5. **Stage 5 — Decision Support** (Planned): Smart charging advisory analytics, flexibility modeling ($\text{ChargingDuration} / \text{PluggedInDuration}$), demand shifting potential, and bay occupancy planning.
+6. **Stage 6 — Streamlit Application** (Planned): Interactive web dashboard for session inspection, predictive intelligence, flexibility visualization, and scenario planning.
+7. **Stage 7 — Integration, Validation & Release** (Planned): End-to-end integration testing, system-wide performance benchmarking, release packaging, and user documentation.
 
 ---
 
@@ -234,15 +163,18 @@ The pipeline produces a single canonical Parquet dataset:
 
 ### Installation
 
-Clone the repository and install the package in editable mode:
+Clone the repository and install the package:
 
 ```bash
 git clone https://github.com/nayanojwal0810/Tarang.git
 cd Tarang
-pip install -e .
-```
 
-*Note: Dependencies in `requirements.txt` specify minimum compatible versions (`>=`), not pinned versions.*
+# Standard package installation
+pip install -e .
+
+# Development and testing installation (includes pytest)
+pip install -e ".[dev]"
+```
 
 ### Raw Data Setup
 
@@ -404,6 +336,17 @@ Run the full test suite including unit tests and integration tests:
 ```bash
 python -m pytest tests/ -v
 ```
+
+---
+
+## Documentation
+
+Detailed architectural, data contract, and inference specifications are maintained in `docs/`:
+
+- [**Architecture & Project Structure**](docs/architecture/project_structure.md): System architecture, package responsibilities, subsystem data flows, and full roadmap.
+- [**Data Contract & Screening Rules**](docs/data/data_contract.md): Exact 10-step screening pipeline, anti-leakage boundaries, and feature engineering specifications.
+- [**Data Dictionary**](docs/data/data_dictionary.md): Raw transaction/metadata fields and canonical 30-column definitions, units, and ranges.
+- [**Inference Contract & Specification**](docs/inference/inference_contract.md): Stage 4 single-session API, batch CLI, cold-start rules, and model artifact specifications.
 
 ---
 
