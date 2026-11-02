@@ -6,7 +6,7 @@ Implements UTC date partitioning:
 
 Trains fresh HistGradientBoostingRegressor models for each subgroup using
 chronological 80/20 train/test splits, computes benchmark evaluation metrics,
-and saves comparison tables and model artifacts.
+and saves comparison tables, subgroup models, and held-out test predictions.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def train_and_evaluate_subgroup_hgbr(
     model.fit(X_train_feat, y_train)
     y_pred_test = model.predict(X_test_feat)
 
-    # Calculate metrics
+    # Calculate metrics on the held-out test split
     raw_metrics = calculate_metrics(y_true=y_test.values, y_pred=y_pred_test)
 
     # Convert percentage scores to percentage scale
@@ -139,10 +139,14 @@ def train_and_evaluate_subgroup_hgbr(
         joblib.dump(model, model_save_path)
         logger.info("Saved subgroup model to %s", model_save_path)
 
-    # Prepare predictions DataFrame
+    # Prepare held-out test predictions DataFrame (no training records included)
     preds_df = X_test.copy()
-    preds_df["y_true"] = y_test
-    preds_df["y_pred"] = y_pred_test
+    if "dataset" in preds_df.columns:
+        preds_df = preds_df.drop(columns=["dataset"])
+    preds_df["subgroup"] = subgroup_name
+    preds_df["subgroup_split"] = "Test"
+    preds_df[f"actual_{target}"] = y_test.values
+    preds_df[f"predicted_{target}"] = y_pred_test
 
     return test_metrics, model, preds_df
 
@@ -156,12 +160,16 @@ def run_subgroup_analysis(
 ) -> pd.DataFrame:
     """Execute complete subgroup analysis comparing same-day vs overnight sessions.
 
+    Trains fresh HGBR models for same-day and overnight charging sessions,
+    evaluates performance on each subgroup's held-out test split, persists
+    models and prediction CSVs, and exports comparison summary metrics.
+
     Args:
         sessions: Full canonical sessions DataFrame.
         target: Prediction target ('Duration' or 'ConsumedkWh').
         performance_all: MultiIndex performance Series for aggregate benchmark metrics.
         output_dir: Path to save same_day_overnight_metrics.csv.
-        evaluation_data_dir: Path to save subgroup joblib models.
+        evaluation_data_dir: Path to save subgroup joblib models and test prediction CSVs.
 
     Returns:
         Comparison DataFrame summarizing sample sizes and evaluation metrics.
@@ -170,19 +178,39 @@ def run_subgroup_analysis(
 
     df_sameday, df_overnight = partition_sessions_by_timing(sessions)
 
-    models_dir = None
+    target_data_dir: Optional[Path] = None
     if evaluation_data_dir is not None:
-        models_dir = Path(evaluation_data_dir) / "models"
+        target_data_dir = Path(evaluation_data_dir)
     elif EVALUATION_DATA_DIR is not None:
         sub_folder = "duration" if target == TARGET_DURATION else "energy"
-        models_dir = EVALUATION_DATA_DIR / sub_folder / "models"
+        target_data_dir = EVALUATION_DATA_DIR / sub_folder
 
-    metrics_sameday, model_sameday, _ = train_and_evaluate_subgroup_hgbr(
+    models_dir = target_data_dir / "models" if target_data_dir is not None else None
+
+    metrics_sameday, model_sameday, preds_sameday = train_and_evaluate_subgroup_hgbr(
         df_sameday, target, "same_day", models_dir=models_dir
     )
-    metrics_overnight, model_overnight, _ = train_and_evaluate_subgroup_hgbr(
+    metrics_overnight, model_overnight, preds_overnight = train_and_evaluate_subgroup_hgbr(
         df_overnight, target, "overnight", models_dir=models_dir
     )
+
+    # Persist subgroup held-out test predictions
+    if target_data_dir is not None:
+        target_data_dir.mkdir(parents=True, exist_ok=True)
+        same_day_csv = target_data_dir / "same_day_predictions.csv"
+        overnight_csv = target_data_dir / "overnight_predictions.csv"
+        preds_sameday.to_csv(same_day_csv, index=False)
+        preds_overnight.to_csv(overnight_csv, index=False)
+        logger.info(
+            "Saved same-day held-out test predictions (%d records) to %s",
+            len(preds_sameday),
+            same_day_csv,
+        )
+        logger.info(
+            "Saved overnight held-out test predictions (%d records) to %s",
+            len(preds_overnight),
+            overnight_csv,
+        )
 
     # Retrieve all-session benchmark metrics
     if performance_all is not None:
@@ -244,4 +272,3 @@ def run_subgroup_analysis(
         logger.info("Saved subgroup metrics table to %s", csv_path)
 
     return df_metrics
-

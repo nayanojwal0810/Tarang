@@ -251,60 +251,6 @@ def compute_vehicle_characteristics(
     return regression_results
 
 
-def compute_model_agreement(
-    performance_participants: pd.DataFrame,
-    dataset: str = "Test",
-    score: str = "mae",
-) -> Dict[str, Dict[str, float]]:
-    """Compute pairwise agreement between benchmark models across vehicles.
-
-    Evaluates pairs:
-    - HGBR vs LinearRegression
-    - HGBR vs QuantileRegressor
-    - LinearRegression vs QuantileRegressor
-
-    Args:
-        performance_participants: MultiIndex performance DataFrame.
-        dataset: Split to evaluate. Defaults to 'Test'.
-        score: Score metric to compare. Defaults to 'mae'.
-
-    Returns:
-        Dict mapping pair name to Pearson r, Spearman rho, and mean absolute difference.
-    """
-    pairs = [
-        ("HistGradientBoostingRegressor", "LinearRegression"),
-        ("HistGradientBoostingRegressor", "QuantileRegressor"),
-        ("LinearRegression", "QuantileRegressor"),
-    ]
-
-    agreement_dict = {}
-    for m1, m2 in pairs:
-        col1 = (m1, dataset, score)
-        col2 = (m2, dataset, score)
-        if col1 in performance_participants.columns and col2 in performance_participants.columns:
-            s1 = performance_participants[col1]
-            s2 = performance_participants[col2]
-            valid = s1.notna() & s2.notna()
-            v1 = s1[valid]
-            v2 = s2[valid]
-
-            pearson_r = float(v1.corr(v2, method="pearson")) if len(v1) > 1 else np.nan
-            spearman_rho = float(v1.corr(v2, method="spearman")) if len(v1) > 1 else np.nan
-            mean_diff = float((v1 - v2).abs().mean()) if len(v1) > 0 else np.nan
-
-            pair_label = f"{m1.removesuffix('Regressor').removesuffix('Regression').replace('HistGradientBoosting', 'HGBR')} vs {m2.removesuffix('Regressor').removesuffix('Regression')}"
-            agreement_dict[pair_label] = {
-                "model_1": m1,
-                "model_2": m2,
-                "pearson_r": pearson_r,
-                "spearman_rho": spearman_rho,
-                "mean_abs_diff": mean_diff,
-                "n_vehicles": int(valid.sum()),
-            }
-
-    return agreement_dict
-
-
 def compute_error_over_time(
     predictions: pd.DataFrame,
     target: str,

@@ -244,16 +244,35 @@ flowchart TD
         Regressors --> Reports["Publication Reports &\nOccupancy Heatmaps"]
     end
 
-    subgraph Stage4["Stage 4: Decision Support & User Interface (Next)"]
-        Reports --> DecisionSupport["Advisory Decision Support\n(Flexibility & Bay Planning)"]
-        DecisionSupport --> UserInterface["Interactive User Interface"]
+    subgraph Stage4["Stage 4: Inference (Planned)"]
+        InferenceEngine["Batch & Single-Session\nInference Pipeline"]
     end
+
+    subgraph Stage5["Stage 5: Decision Support (Planned)"]
+        DecisionSupport["Smart Charging Advisory &\nFlexibility Analytics"]
+    end
+
+    subgraph Stage6["Stage 6: Streamlit Application (Planned)"]
+        StreamlitApp["Interactive User Interface &\nScenario Planning Dashboard"]
+    end
+
+    subgraph Stage7["Stage 7: Integration, Validation & Release (Planned)"]
+        Release["End-to-End Validation,\nBenchmarking & Packaging"]
+    end
+
+    Reports --> InferenceEngine
+    InferenceEngine --> DecisionSupport
+    DecisionSupport --> StreamlitApp
+    StreamlitApp --> Release
 ```
 
 1. **Stage 1 — Foundation & Data Pipeline** (Completed): Ingestion, audit, deterministic screening, 13 features, descriptive EDA.
 2. **Stage 2 — Benchmark Predictive Modeling** (Completed): Dual-target benchmark models (LR, QR, HGBR) and baselines (Mean, Median, LastValue).
-3. **Stage 3 — Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
-4. **Stage 4 — Advisory Decision Support & Application** (Planned): Smart charging decision support, bay scheduling flexibility, and interactive application.
+3. **Stage 3 — Model Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
+4. **Stage 4 — Inference** (Planned): Batch and single-session prediction engine, feature schema enforcement, lag state retrieval, and low-latency inference pipelines.
+5. **Stage 5 — Decision Support** (Planned): Smart charging advisory analytics, flexibility modeling ($\text{ChargingDuration} / \text{PluggedInDuration}$), demand shifting potential, and bay occupancy planning.
+6. **Stage 6 — Streamlit Application** (Planned): Interactive web dashboard for session inspection, predictive intelligence, flexibility visualization, and scenario planning.
+7. **Stage 7 — Integration, Validation & Release** (Planned): End-to-end integration testing, system-wide performance benchmarking, release packaging, and user documentation.
 
 > [!NOTE]
 > TARANG's predictions and flexibility insights provide **advisory decision support**. The system does not perform automated charger hardware actuation or live grid switching.

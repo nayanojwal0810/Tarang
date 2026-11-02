@@ -16,7 +16,6 @@ from tarang.config import (
 from tarang.evaluation import (
     compute_data_in_splits,
     compute_error_over_time,
-    compute_model_agreement,
     compute_seasonality,
     compute_tree_shap_importance,
     compute_vehicle_characteristics,
@@ -130,27 +129,23 @@ def test_full_evaluation_pipeline_end_to_end(synthetic_pipeline_env):
     )
     assert "duration_variability" in veh_chars
 
-    # 3. Model Agreement
-    agreement = compute_model_agreement(perf_part, dataset="Test", score="mae")
-    assert len(agreement) > 0
-
-    # 4. Temporal Error Change
+    # 3. Temporal Error Change
     error_over_time = compute_error_over_time(
         sessions, TARGET_DURATION, model_name="HistGradientBoostingRegressor", dataset="Test"
     )
     assert "mean_relative_change" in error_over_time
 
-    # 5. Seasonality
+    # 4. Seasonality
     seasonality = compute_seasonality(
         sessions, TARGET_DURATION, model_name="HistGradientBoostingRegressor"
     )
     assert "Train" in seasonality
 
-    # 6. Split Availability
+    # 5. Split Availability
     data_splits = compute_data_in_splits(sessions)
     assert "Train" in data_splits
 
-    # 7. TreeSHAP
+    # 6. TreeSHAP
     test_preds = sessions[sessions["dataset"] == "Test"]
     df_global, df_vehicle = compute_tree_shap_importance(
         model=model,
@@ -160,7 +155,7 @@ def test_full_evaluation_pipeline_end_to_end(synthetic_pipeline_env):
     assert (output_dir / "shap_global_importance.csv").exists()
     assert (output_dir / "shap_vehicle_importance.csv").exists()
 
-    # 8. Subgroup Analysis
+    # 7. Subgroup Analysis
     df_subgroups = run_subgroup_analysis(
         sessions=sessions,
         target=TARGET_DURATION,
@@ -169,8 +164,13 @@ def test_full_evaluation_pipeline_end_to_end(synthetic_pipeline_env):
         evaluation_data_dir=data_dir,
     )
     assert (output_dir / "same_day_overnight_metrics.csv").exists()
+    # Confirm subgroup prediction files exist in data_dir
+    assert (data_dir / "same_day_predictions.csv").exists()
+    assert (data_dir / "overnight_predictions.csv").exists()
+    assert (data_dir / "same_day_predictions.csv").stat().st_size > 0
+    assert (data_dir / "overnight_predictions.csv").stat().st_size > 0
 
-    # 9. Visualizations
+    # 8. Visualizations
     plot_performance_boxplots(perf_part, perf_all, TARGET_DURATION, output_dir / "performance.png")
     plot_best_model_distribution(sessions, perf_part, TARGET_DURATION, output_dir / "best_model.png")
     plot_performance_over_features(veh_chars, TARGET_DURATION, output_dir / "performance_over_features.png")
@@ -200,16 +200,22 @@ def test_full_evaluation_pipeline_end_to_end(synthetic_pipeline_env):
         assert hm.exists()
         assert hm.stat().st_size > 0
 
-    # 10. Markdown Report
+    # 9. Markdown Report
+    dataset_counts = {
+        "total_sessions": len(sessions),
+        "n_participants": int(sessions["ParticipantID"].nunique()),
+        "n_train": int((sessions["dataset"] == "Train").sum()),
+        "n_test": int((sessions["dataset"] == "Test").sum()),
+    }
     md_content = generate_evaluation_markdown_report(
         target=TARGET_DURATION,
         table_df=perf_table,
         vehicle_characteristics=veh_chars,
-        agreement_dict=agreement,
         error_over_time_dict=error_over_time,
         data_in_splits=data_splits,
         df_global_shap=df_global,
         df_subgroups=df_subgroups,
+        dataset_counts=dataset_counts,
         has_heatmaps=True,
     )
     md_file = output_dir / "evaluation_summary.md"

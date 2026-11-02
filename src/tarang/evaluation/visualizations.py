@@ -402,7 +402,8 @@ def plot_performance_over_features(
 
             x_smooth = np.linspace(x.min(), x.max(), 100)
             y_smooth = slope * x_smooth + intercept
-            label_text = f"a = {slope:.3f}\nb = {intercept:.3f}\n$r^2$ = {r2:.3f}\np = {p_val:.3f}"
+            p_str = "p < 0.0001" if p_val < 0.0001 else f"p = {p_val:.3f}"
+            label_text = f"a = {slope:.3f}\nb = {intercept:.3f}\n$r^2$ = {r2:.3f}\n{p_str}"
             ax[i].plot(x_smooth, y_smooth, color=line_color, label=label_text, linewidth=1.2)
             ax[i].legend(loc="upper left", fontsize=6.5, frameon=False)
 

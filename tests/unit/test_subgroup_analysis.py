@@ -90,6 +90,14 @@ def test_train_and_evaluate_subgroup_hgbr(synthetic_timing_sessions, tmp_path):
     assert metrics["n_sessions"] == 30
     assert metrics["n_train"] == 24  # 80%
     assert metrics["n_test"] == 6    # 20%
+    assert len(preds) == 6           # Only held-out test predictions preserved
+
+    # Verify explicit column naming
+    assert f"actual_{TARGET_DURATION}" in preds.columns
+    assert f"predicted_{TARGET_DURATION}" in preds.columns
+    assert "subgroup_split" in preds.columns
+    assert (preds["subgroup_split"] == "Test").all()
+    assert "ParticipantID" in preds.columns
 
     # Saved model
     saved_model = tmp_path / "HistGradientBoostingRegressor_same_day.joblib"
@@ -97,7 +105,7 @@ def test_train_and_evaluate_subgroup_hgbr(synthetic_timing_sessions, tmp_path):
 
 
 def test_run_subgroup_analysis(synthetic_timing_sessions, tmp_path):
-    """Test full subgroup analysis workflow."""
+    """Test full subgroup analysis workflow and prediction file persistence."""
     df_metrics = run_subgroup_analysis(
         sessions=synthetic_timing_sessions,
         target=TARGET_DURATION,
@@ -112,3 +120,23 @@ def test_run_subgroup_analysis(synthetic_timing_sessions, tmp_path):
 
     csv_path = tmp_path / "same_day_overnight_metrics.csv"
     assert csv_path.exists()
+
+    # Verify both subgroup prediction CSVs were persisted
+    same_day_csv = tmp_path / "same_day_predictions.csv"
+    overnight_csv = tmp_path / "overnight_predictions.csv"
+    assert same_day_csv.exists()
+    assert overnight_csv.exists()
+
+    # Verify expected test record counts (20% of 30 = 6, 20% of 20 = 4)
+    df_same_preds = pd.read_csv(same_day_csv)
+    df_over_preds = pd.read_csv(overnight_csv)
+    assert len(df_same_preds) == 6
+    assert len(df_over_preds) == 4
+
+    # Verify actual and predicted columns are present
+    for df_p in [df_same_preds, df_over_preds]:
+        assert "ParticipantID" in df_p.columns
+        assert f"actual_{TARGET_DURATION}" in df_p.columns
+        assert f"predicted_{TARGET_DURATION}" in df_p.columns
+        assert df_p[f"actual_{TARGET_DURATION}"].notna().all()
+        assert df_p[f"predicted_{TARGET_DURATION}"].notna().all()

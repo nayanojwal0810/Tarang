@@ -6,10 +6,11 @@
 
 ## 1. Executive Summary
 
-This report presents the rigorous evaluation, behavioral analysis, and TreeSHAP explainability for **TARANG** predicting **Plugged-in Duration (target_duration_hours)**.
+This report presents the model evaluation, participant-level behavioral analysis, and TreeSHAP explainability for **TARANG** predicting **Plugged-in Duration (target_duration_hours)**.
 
-- **Best Performing Model:** `HistGradientBoostingRegressor` (HGBR) achieves superior accuracy across all evaluated metrics on the held-out test split (MAE: **5.53 h**, MdAE: **1.92 h**, MAPE: **201%**, SMAPE: **52.8%**).
-- **Vehicle-Level Heterogeneity:** The per-vehicle mean MAE is **6.2 h** (MdAE: **3.28 h**, MAPE: **179%**), demonstrating strong user-level predictability with meaningful variance across individual charging habits.
+- **Dataset Evaluated:** 59,520 canonical sessions across 267 unique participants (47,616 Train sessions / 11,904 Test sessions in chronological 80/20 split).
+- **Best Performing Model:** `HistGradientBoostingRegressor` (HGBR) achieves the lowest error across all evaluated metrics on the held-out test split (All data MAE: **5.53 h**, MdAE: **1.92 h**, MAPE: **201%**, SMAPE: **52.8%**).
+- **Participant-Level Performance:** The reported per-vehicle mean MAE is **6.2 h** (MdAE: **3.28 h**, MAPE: **179%**), reflecting the distribution of individual participant charging patterns across the cohort.
 - **Dominant Feature Drivers:** TreeSHAP analysis identifies `StartSin`, `LastDuration`, `CarKWh` as the primary global predictors driving model decisions.
 
 ---
@@ -43,7 +44,7 @@ Comparison of absolute error density between all sessions and the vehicle-level 
 
 Ordinary Least Squares (OLS) regression analyzing the dependence of participant-level Median Absolute Percentage Error (MdAPE) on user charging behaviors:
 
-- **Variation of session duration (P90-P10 / Median)**: Slope $a = 13.451$, Intercept $b = 12.414$, $r^2 = 0.064$, $p = 0.0001$ (Statistically significant ($p < 0.05$))
+- **Variation of session duration (P90-P10 / Median)**: Slope $a = 13.451$, Intercept $b = 12.414$, $r^2 = 0.064$, $p < 0.0001$ (Statistically significant ($p < 0.05$))
 - **Battery size (CarKWh)**: Slope $a = 0.126$, Intercept $b = 33.716$, $r^2 = 0.003$, $p = 0.4278$ (Not statistically significant)
 - **Session start hour (StartHour)**: Slope $a = -6.273$, Intercept $b = 139.994$, $r^2 = 0.031$, $p = 0.0053$ (Statistically significant ($p < 0.05$))
 
@@ -51,15 +52,9 @@ Ordinary Least Squares (OLS) regression analyzing the dependence of participant-
 
 ---
 
-## 5. Model Agreement & Multi-Model Robustness
+## 5. Model Agreement & Multi-Model Comparison
 
-Pairwise vehicle-level MAE correlations between benchmark regressors:
-
-| Model Comparison | Pearson $r$ | Spearman $\rho$ | Mean Absolute Difference | Vehicles |
-| :--- | :---: | :---: | :---: | :---: |
-| **HGBR vs Linear** | 0.983 | 0.874 | 1.136 h | 248 |
-| **HGBR vs Quantile** | 0.993 | 0.933 | 0.637 h | 248 |
-| **Linear vs Quantile** | 0.988 | 0.934 | 0.761 h | 248 |
+Visual comparison of participant-level Test MAE values between benchmark models (HGBR versus Linear Regression, HGBR versus Quantile Regressor, and Linear Regression versus Quantile Regressor). The main scatter plot displays agreement across all vehicles, while the inset axis zooms into the $[0, 20]$ error range:
 
 ![Model Agreement](model_agreement.png)
 
@@ -67,7 +62,7 @@ Pairwise vehicle-level MAE correlations between benchmark regressors:
 
 ## 6. Temporal Stability & Seasonality Analysis
 
-- **Temporal Shift in Test Split:** The mean relative change in MAE from the first to second half of the test set across vehicles is **-0.068 \pm 0.523**, indicating strong model calibration over time without catastrophic concept drift.
+- **Temporal Error Shift Across Test Split:** The relative change in MAE from the first to second half of the test set is calculated per participant as $(\text{mean}(\text{first-half AE}) - \text{mean}(\text{second-half AE})) / \text{mean}(\text{all participant Test AE})$. Across evaluated vehicles, the mean relative change is **-0.068 \pm 0.523**. Under this formula, a negative value indicates that prediction error is higher in the second half of the participant's test sessions than in the first half.
 - **Split Data Availability:**
   - **Train split:** 178.3 \pm 139.7 sessions over 298.8 \pm 138.2 days per vehicle.
   - **Test split:** 48.0 \pm 33.2 sessions over 70.5 \pm 17.3 days per vehicle.
@@ -106,7 +101,7 @@ Data files: [shap_global_importance.csv](shap_global_importance.csv), [shap_vehi
 
 ## 8. Subgroup Analysis: Same-day vs. Overnight Charging
 
-Independent evaluation comparing daytime charging sessions ending on the same UTC date against overnight charging sessions spanning into the following day:
+Independent evaluation comparing same-day charging sessions (where StopTime and StartTime fall on the same UTC calendar date, day difference == 0) against overnight charging sessions (where StopTime falls on a subsequent UTC calendar date, day difference > 0):
 
 | Subgroup | Sessions | Train $N$ | Test $N$ | MAE | MdAE | MAPE (%) | MdAPE (%) | SMAPE (%) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |

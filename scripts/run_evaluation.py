@@ -33,7 +33,6 @@ from tarang.config import (
 from tarang.evaluation import (
     compute_data_in_splits,
     compute_error_over_time,
-    compute_model_agreement,
     compute_seasonality,
     compute_tree_shap_importance,
     compute_vehicle_characteristics,
@@ -100,23 +99,19 @@ def evaluate_target(
     logger.info("Computing user charging characteristics and regressions...")
     veh_chars = compute_vehicle_characteristics(perf_part, features_df, model_name="HistGradientBoostingRegressor", dataset="Test")
 
-    # 4. Model Agreement
-    logger.info("Computing pairwise model agreement statistics...")
-    agreement = compute_model_agreement(perf_part, dataset="Test", score="mae")
-
-    # 5. Temporal Stability (Error over time)
+    # 4. Temporal Stability (Error over time)
     logger.info("Computing temporal error change across test split...")
     error_over_time = compute_error_over_time(predictions, canonical_target, model_name="HistGradientBoostingRegressor", dataset="Test")
 
-    # 6. Seasonality (Monthly MAPE)
+    # 5. Seasonality (Monthly MAPE)
     logger.info("Computing monthly seasonality trends...")
     seasonality_data = compute_seasonality(predictions, canonical_target, model_name="HistGradientBoostingRegressor")
 
-    # 7. Split Data Availability
+    # 6. Split Data Availability
     logger.info("Computing data availability in splits...")
     data_in_splits = compute_data_in_splits(predictions)
 
-    # 8. TreeSHAP Explainability
+    # 7. TreeSHAP Explainability
     logger.info("Computing TreeSHAP feature importances...")
     df_global_shap, df_vehicle_shap = compute_tree_shap_importance(
         model=hgbr_model,
@@ -124,7 +119,7 @@ def evaluate_target(
         output_dir=output_dir,
     )
 
-    # 9. Subgroup Analysis (Same-day vs Overnight)
+    # 8. Subgroup Analysis (Same-day vs Overnight)
     logger.info("Running subgroup analysis for same-day vs overnight sessions...")
     df_subgroups = run_subgroup_analysis(
         sessions=predictions,
@@ -134,7 +129,7 @@ def evaluate_target(
         evaluation_data_dir=evaluation_data_dir,
     )
 
-    # 10. Generate Visualizations
+    # 9. Generate Visualizations
     logger.info("Generating publication-quality figures...")
     plot_performance_boxplots(perf_part, perf_all, canonical_target, output_dir / "performance.png")
     plot_best_model_distribution(predictions, perf_part, canonical_target, output_dir / "best_model.png")
@@ -151,17 +146,23 @@ def evaluate_target(
         plot_duration_heatmaps(predictions, perf_part, output_dir)
         has_heatmaps = True
 
-    # 11. Markdown Summary Report
+    # 10. Markdown Summary Report
     logger.info("Synthesizing evaluation summary report...")
+    dataset_counts = {
+        "total_sessions": len(predictions),
+        "n_participants": int(predictions["ParticipantID"].nunique()),
+        "n_train": int((predictions["dataset"] == "Train").sum()),
+        "n_test": int((predictions["dataset"] == "Test").sum()),
+    }
     report_md = generate_evaluation_markdown_report(
         target=canonical_target,
         table_df=perf_table,
         vehicle_characteristics=veh_chars,
-        agreement_dict=agreement,
         error_over_time_dict=error_over_time,
         data_in_splits=data_in_splits,
         df_global_shap=df_global_shap,
         df_subgroups=df_subgroups,
+        dataset_counts=dataset_counts,
         has_heatmaps=has_heatmaps,
     )
     report_path = output_dir / "evaluation_summary.md"

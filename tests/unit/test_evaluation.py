@@ -11,7 +11,6 @@ from tarang.config import TARGET_DURATION, TARGET_ENERGY
 from tarang.evaluation.analysis import (
     compute_data_in_splits,
     compute_error_over_time,
-    compute_model_agreement,
     compute_participant_summary_stats,
     compute_seasonality,
     compute_vehicle_characteristics,
@@ -146,17 +145,6 @@ def test_compute_vehicle_characteristics(sample_performance_data, sample_predict
         assert "slope" in reg_results[key]
         assert "p_value" in reg_results[key]
         assert "x" in reg_results[key]
-
-
-def test_compute_model_agreement(sample_performance_data):
-    """Test pairwise model agreement calculations."""
-    _, perf_part = sample_performance_data
-    agreement = compute_model_agreement(perf_part, dataset="Test", score="mae")
-
-    assert len(agreement) > 0
-    first_pair = list(agreement.keys())[0]
-    assert "pearson_r" in agreement[first_pair]
-    assert "mean_abs_diff" in agreement[first_pair]
 
 
 def test_compute_error_over_time(sample_predictions_df):

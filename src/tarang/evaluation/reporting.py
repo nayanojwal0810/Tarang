@@ -22,15 +22,74 @@ from tarang.evaluation.analysis import (
 logger = logging.getLogger("tarang.evaluation.reporting")
 
 
+def format_p_value(p: float) -> str:
+    """Format p-value avoiding rounded p = 0.0000.
+
+    Args:
+        p: Floating-point p-value.
+
+    Returns:
+        Formatted string (e.g. 'p < 0.0001' or 'p = 0.0053').
+    """
+    if p is None or pd.isna(p):
+        return "N/A"
+    if p < 0.0001:
+        return "p < 0.0001"
+    return f"p = {p:.4f}"
+
+
+def summarize_benchmark_winners(table_df: pd.DataFrame, unit: str) -> str:
+    """Dynamically determine metric winners from the computed benchmark table."""
+    metrics = ["MAE", "MdAE", "MAPE", "MdAPE", "SMAPE"]
+    all_winners = {m: table_df[("All data", m)].idxmin() for m in metrics}
+    veh_winners = {m: table_df[("Per vehicle mean", m)].idxmin() for m in metrics}
+
+    hgbr_all_mae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MAE")])
+    hgbr_all_medae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MdAE")])
+    hgbr_all_mape = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MAPE")])
+    hgbr_all_smape = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "SMAPE")])
+
+    # Check if HGBR wins on every metric
+    hgbr_wins_all = all(w == "HistGradientBoostingRegressor" for w in all_winners.values()) and all(
+        w == "HistGradientBoostingRegressor" for w in veh_winners.values()
+    )
+
+    if hgbr_wins_all:
+        return (
+            f"- **Best Performing Model:** `HistGradientBoostingRegressor` (HGBR) achieves the lowest error "
+            f"across all evaluated metrics on the held-out test split (All data MAE: **{hgbr_all_mae} {unit}**, "
+            f"MdAE: **{hgbr_all_medae} {unit}**, MAPE: **{hgbr_all_mape}%**, SMAPE: **{hgbr_all_smape}%**)."
+        )
+    else:
+        hgbr_won_metrics = [m for m, w in all_winners.items() if w == "HistGradientBoostingRegressor"]
+        other_winners = {m: w for m, w in all_winners.items() if w != "HistGradientBoostingRegressor"}
+
+        parts = []
+        if hgbr_won_metrics:
+            m_str = ", ".join(hgbr_won_metrics)
+            parts.append(
+                f"- **Model Performance Summary:** `HistGradientBoostingRegressor` (HGBR) achieves the lowest error "
+                f"on {m_str} on the held-out test split (MAE: **{hgbr_all_mae} {unit}**, MdAE: **{hgbr_all_medae} {unit}**, "
+                f"SMAPE: **{hgbr_all_smape}%**)"
+            )
+        for m, model in other_winners.items():
+            val_all = format_sci(table_df.loc[model, ("All data", m)])
+            val_veh = format_sci(table_df.loc[model, ("Per vehicle mean", m)])
+            parts.append(
+                f"`{model}` achieves the lowest aggregate {m} (**{val_all}%**) and per-vehicle mean {m} (**{val_veh}%**)"
+            )
+        return "; while ".join(parts) + "."
+
+
 def generate_evaluation_markdown_report(
     target: str,
     table_df: pd.DataFrame,
     vehicle_characteristics: Dict[str, Any],
-    agreement_dict: Dict[str, Any],
     error_over_time_dict: Dict[str, Any],
     data_in_splits: Dict[str, Any],
     df_global_shap: pd.DataFrame,
     df_subgroups: pd.DataFrame,
+    dataset_counts: Dict[str, int],
     has_heatmaps: bool = False,
 ) -> str:
     """Generate Markdown report summarizing all Stage 3 findings.
@@ -39,11 +98,12 @@ def generate_evaluation_markdown_report(
         target: Prediction target ('Duration' or 'ConsumedkWh').
         table_df: Benchmark performance table.
         vehicle_characteristics: OLS regression results against user characteristics.
-        agreement_dict: Model agreement pairwise statistics.
         error_over_time_dict: Temporal degradation shift statistics.
         data_in_splits: Session count and timespan statistics in train and test splits.
         df_global_shap: Global TreeSHAP importance ranking.
         df_subgroups: Same-day vs overnight subgroup metrics table.
+        dataset_counts: Dictionary of evaluated dataset counts (total_sessions,
+            n_participants, n_train, n_test).
         has_heatmaps: True if occupancy heatmaps were generated (Duration target).
 
     Returns:
@@ -52,10 +112,10 @@ def generate_evaluation_markdown_report(
     unit = "h" if target == TARGET_DURATION else "kWh"
     target_display = "Plugged-in Duration (target_duration_hours)" if target == TARGET_DURATION else "Energy Consumption (target_energy_kwh)"
 
-    hgbr_all_mae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MAE")])
-    hgbr_all_medae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MdAE")])
-    hgbr_all_mape = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "MAPE")])
-    hgbr_all_smape = format_sci(table_df.loc["HistGradientBoostingRegressor", ("All data", "SMAPE")])
+    total_sessions = dataset_counts.get("total_sessions", 0)
+    n_participants = dataset_counts.get("n_participants", 0)
+    n_train = dataset_counts.get("n_train", 0)
+    n_test = dataset_counts.get("n_test", 0)
 
     hgbr_veh_mae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("Per vehicle mean", "MAE")])
     hgbr_veh_medae = format_sci(table_df.loc["HistGradientBoostingRegressor", ("Per vehicle mean", "MdAE")])
@@ -74,15 +134,15 @@ def generate_evaluation_markdown_report(
         "",
         "## 1. Executive Summary",
         "",
-        f"This report presents the rigorous evaluation, behavioral analysis, and TreeSHAP explainability "
+        f"This report presents the model evaluation, participant-level behavioral analysis, and TreeSHAP explainability "
         f"for **TARANG** predicting **{target_display}**.",
         "",
-        f"- **Best Performing Model:** `HistGradientBoostingRegressor` (HGBR) achieves superior accuracy "
-        f"across all evaluated metrics on the held-out test split (MAE: **{hgbr_all_mae} {unit}**, "
-        f"MdAE: **{hgbr_all_medae} {unit}**, MAPE: **{hgbr_all_mape}%**, SMAPE: **{hgbr_all_smape}%**).",
-        f"- **Vehicle-Level Heterogeneity:** The per-vehicle mean MAE is **{hgbr_veh_mae} {unit}** "
-        f"(MdAE: **{hgbr_veh_medae} {unit}**, MAPE: **{hgbr_veh_mape}%**), demonstrating strong user-level "
-        f"predictability with meaningful variance across individual charging habits.",
+        f"- **Dataset Evaluated:** {total_sessions:,} canonical sessions across {n_participants:,} unique participants "
+        f"({n_train:,} Train sessions / {n_test:,} Test sessions in chronological 80/20 split).",
+        summarize_benchmark_winners(table_df, unit),
+        f"- **Participant-Level Performance:** The reported per-vehicle mean MAE is **{hgbr_veh_mae} {unit}** "
+        f"(MdAE: **{hgbr_veh_medae} {unit}**, MAPE: **{hgbr_veh_mape}%**), reflecting the distribution of "
+        f"individual participant charging patterns across the cohort.",
         f"- **Dominant Feature Drivers:** TreeSHAP analysis identifies {top_feature_str} as the primary "
         f"global predictors driving model decisions.",
         "",
@@ -117,10 +177,11 @@ def generate_evaluation_markdown_report(
 
     for key in ["duration_variability", "battery_size", "start_hour"]:
         info = vehicle_characteristics[key]
+        p_formatted = format_p_value(info["p_value"])
         sig_str = "Statistically significant ($p < 0.05$)" if info["significant"] else "Not statistically significant"
         md_lines.append(
             f"- **{info['name']}**: Slope $a = {info['slope']:.3f}$, Intercept $b = {info['intercept']:.3f}$, "
-            f"$r^2 = {info['r2']:.3f}$, $p = {info['p_value']:.4f}$ ({sig_str})"
+            f"$r^2 = {info['r2']:.3f}$, ${p_formatted}$ ({sig_str})"
         )
 
     md_lines.extend(
@@ -130,22 +191,11 @@ def generate_evaluation_markdown_report(
             "",
             "---",
             "",
-            "## 5. Model Agreement & Multi-Model Robustness",
+            "## 5. Model Agreement & Multi-Model Comparison",
             "",
-            "Pairwise vehicle-level MAE correlations between benchmark regressors:",
-            "",
-            "| Model Comparison | Pearson $r$ | Spearman $\\rho$ | Mean Absolute Difference | Vehicles |",
-            "| :--- | :---: | :---: | :---: | :---: |",
-        ]
-    )
-
-    for pair_name, stats in agreement_dict.items():
-        md_lines.append(
-            f"| **{pair_name}** | {stats['pearson_r']:.3f} | {stats['spearman_rho']:.3f} | {stats['mean_abs_diff']:.3f} {unit} | {stats['n_vehicles']} |"
-        )
-
-    md_lines.extend(
-        [
+            "Visual comparison of participant-level Test MAE values between benchmark models "
+            "(HGBR versus Linear Regression, HGBR versus Quantile Regressor, and Linear Regression versus Quantile Regressor). "
+            "The main scatter plot displays agreement across all vehicles, while the inset axis zooms into the $[0, 20]$ error range:",
             "",
             "![Model Agreement](model_agreement.png)",
             "",
@@ -153,10 +203,12 @@ def generate_evaluation_markdown_report(
             "",
             "## 6. Temporal Stability & Seasonality Analysis",
             "",
-            f"- **Temporal Shift in Test Split:** The mean relative change in MAE from the first to second "
-            f"half of the test set across vehicles is **{error_over_time_dict['mean_relative_change']:.3f} "
-            f"\\pm {error_over_time_dict['std_relative_change']:.3f}**, indicating strong model calibration "
-            f"over time without catastrophic concept drift.",
+            f"- **Temporal Error Shift Across Test Split:** The relative change in MAE from the first to second "
+            f"half of the test set is calculated per participant as $(\\text{{mean}}(\\text{{first-half AE}}) - "
+            f"\\text{{mean}}(\\text{{second-half AE}})) / \\text{{mean}}(\\text{{all participant Test AE}})$. "
+            f"Across evaluated vehicles, the mean relative change is **{error_over_time_dict['mean_relative_change']:.3f} "
+            f"\\pm {error_over_time_dict['std_relative_change']:.3f}**. Under this formula, a negative value indicates "
+            f"that prediction error is higher in the second half of the participant's test sessions than in the first half.",
             f"- **Split Data Availability:**",
             f"  - **Train split:** {data_in_splits['Train']['session_count_mean']:.1f} \\pm {data_in_splits['Train']['session_count_std']:.1f} sessions "
             f"over {data_in_splits['Train']['timespan_days_mean']:.1f} \\pm {data_in_splits['Train']['timespan_days_std']:.1f} days per vehicle.",
@@ -192,8 +244,9 @@ def generate_evaluation_markdown_report(
             "",
             "## 8. Subgroup Analysis: Same-day vs. Overnight Charging",
             "",
-            "Independent evaluation comparing daytime charging sessions ending on the same UTC date against "
-            "overnight charging sessions spanning into the following day:",
+            "Independent evaluation comparing same-day charging sessions (where StopTime and StartTime fall "
+            "on the same UTC calendar date, day difference == 0) against overnight charging sessions "
+            "(where StopTime falls on a subsequent UTC calendar date, day difference > 0):",
             "",
             "| Subgroup | Sessions | Train $N$ | Test $N$ | MAE | MdAE | MAPE (%) | MdAPE (%) | SMAPE (%) |",
             "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |",
@@ -248,4 +301,3 @@ def generate_evaluation_markdown_report(
     )
 
     return "\n".join(md_lines)
-

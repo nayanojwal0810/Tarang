@@ -13,7 +13,6 @@ Provides comprehensive tools for:
 from tarang.evaluation.analysis import (
     compute_data_in_splits,
     compute_error_over_time,
-    compute_model_agreement,
     compute_participant_summary_stats,
     compute_seasonality,
     compute_vehicle_characteristics,
@@ -61,7 +60,6 @@ __all__ = [
     "format_performance_markdown_table",
     "compute_participant_summary_stats",
     "compute_vehicle_characteristics",
-    "compute_model_agreement",
     "compute_error_over_time",
     "compute_seasonality",
     "compute_data_in_splits",
