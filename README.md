@@ -11,6 +11,7 @@ TARANG is a Python analysis and prediction pipeline. It does not control charger
 - Trains and compares models for duration and energy prediction.
 - Produces predictions for single sessions and batches.
 - Calculates projected unplug times and historical flexibility summaries.
+- Provides an interactive web application for single-session and batch forecasting.
 
 The model predicts two targets:
 
@@ -47,7 +48,7 @@ Session Input + Charging History
         ↓
 Inference: Duration & Energy Predictions
         ↓
-Decision Support: Projected Unplug Time & Historical Flexibility
+Decision Support & Interactive Streamlit Web Application
 ```
 
 ## Model comparison
@@ -72,6 +73,7 @@ The current processed dataset contains 59,520 sessions from 267 participants. Th
 - **Language:** Python 3.10+
 - **Data processing:** pandas, NumPy, PyArrow, openpyxl
 - **Machine learning and statistics:** scikit-learn, SciPy, statsmodels, SHAP
+- **Interactive web application:** Streamlit
 - **Plots:** Matplotlib, Seaborn
 - **Model files:** joblib
 - **Tests:** pytest
@@ -83,7 +85,13 @@ Clone the repository and install the package:
 ```bash
 git clone https://github.com/nayanojwal0810/Tarang.git
 cd Tarang
-pip install -e ".[dev]"
+pip install -e ".[dev,app]"
+```
+
+Alternatively, install application dependencies via:
+
+```bash
+pip install -r requirements.txt
 ```
 
 Place the source workbooks in `data/raw/electric_nation/`:
@@ -112,10 +120,16 @@ python scripts/run_inference.py --help
 python scripts/run_decision_support.py --help
 ```
 
+Launch the interactive web application:
+
+```bash
+streamlit run app.py
+```
+
 Run the tests with:
 
 ```bash
-pytest
+python -m pytest
 ```
 
 ## Predictions and advisory outputs
