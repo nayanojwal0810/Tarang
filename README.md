@@ -30,21 +30,24 @@ Each model uses 13 inputs available at or before plug-in time:
 ]
 ```
 
-## Project workflow
+## Project design
 
-```mermaid
-flowchart TD
-    A["Electric Nation workbooks"] --> B["Data audit and preparation"]
-    B --> C["Prepared sessions and 13 model inputs"]
-    C --> D["Data exploration and model training"]
-    D --> E["Model evaluation"]
-    D --> F["Saved trained models"]
-    G["Single-session or batch input"] --> H["Inference"]
-    F --> H
-    H --> I["Duration and energy predictions"]
-    I --> J["Session-level decision support"]
-    C --> J
-    J --> K["Projected unplug time and historical flexibility summary"]
+```text
+Electric Nation Data
+        ↓
+Data Audit & Preparation
+        ↓
+EDA & Feature Engineering (13 inputs)
+        ↓
+Model Training & Evaluation
+        ↓
+Saved Models
+        ↓
+Session Input + Charging History
+        ↓
+Inference: Duration & Energy Predictions
+        ↓
+Decision Support: Projected Unplug Time & Historical Flexibility
 ```
 
 ## Model comparison
