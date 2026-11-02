@@ -11,6 +11,7 @@ from tarang.app.components import render_advisory_card, render_disclaimer, rende
 from tarang.app.helpers import (
     get_decision_support_engine,
     get_sample_history_csv,
+    normalize_participant_id,
     validate_history_dataframe,
 )
 from tarang.inference.feature_builder import build_inference_features
@@ -88,6 +89,7 @@ def render_single_prediction_view() -> None:
             if st.button("Use Sample History Data", help="Populate with pre-formatted demonstration history matching arrival timestamp"):
                 st.session_state["single_history_data"] = get_sample_history_csv(reference_time=arrival_str)
                 st.session_state["history_source"] = "sample"
+                st.session_state["sample_reference_time"] = arrival_str
 
         with sample_col2:
             st.download_button(
@@ -112,9 +114,14 @@ def render_single_prediction_view() -> None:
                 st.session_state["history_source"] = "uploaded"
             except Exception as exc:
                 st.error(f"Failed to parse uploaded CSV: {exc}")
-        elif "single_history_data" in st.session_state and st.session_state.get("history_source") == "sample":
+        elif "single_history_data" in st.session_state:
+            if st.session_state.get("history_source") == "sample":
+                # Ensure demonstration history remains relative to current arrival inputs
+                if st.session_state.get("sample_reference_time") != arrival_str:
+                    st.session_state["single_history_data"] = get_sample_history_csv(reference_time=arrival_str)
+                    st.session_state["sample_reference_time"] = arrival_str
+                st.info("Loaded demonstration driver history.")
             history_df = pd.read_csv(io.StringIO(st.session_state["single_history_data"]))
-            st.info("Loaded demonstration driver history.")
 
         # Validate history DataFrame
         is_valid_history, error_msg, multiple_participants = validate_history_dataframe(history_df)
@@ -124,6 +131,9 @@ def render_single_prediction_view() -> None:
             if not is_valid_history:
                 st.error(f"Invalid history data: {error_msg}")
             else:
+                if "ParticipantID" in history_df.columns:
+                    history_df["ParticipantID"] = history_df["ParticipantID"].apply(normalize_participant_id)
+
                 if multiple_participants:
                     st.warning(
                         "Uploaded file contains multiple participants. "
@@ -137,7 +147,7 @@ def render_single_prediction_view() -> None:
                     )
                     history_df = history_df[
                         history_df["ParticipantID"].notna()
-                        & (history_df["ParticipantID"].astype(str) == str(selected_participant))
+                        & (history_df["ParticipantID"] == selected_participant)
                     ].copy()
                     st.caption(f"Filtered to **{len(history_df)} sessions** for participant `{selected_participant}`.")
                 elif "ParticipantID" in history_df.columns:

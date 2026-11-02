@@ -26,14 +26,24 @@ from tarang.decision_support.reporting import (
 )
 
 
-def _compute_dataset_id(df: pd.DataFrame) -> str:
-    """Compute a deterministic hash fingerprint for an input DataFrame to prevent stale results."""
-    shape_sig = f"{df.shape[0]}x{df.shape[1]}"
-    cols_sig = ",".join(sorted(df.columns))
-    head_sig = str(df.head(2).to_dict()) if not df.empty else "empty"
-    tail_sig = str(df.tail(2).to_dict()) if not df.empty else "empty"
-    raw = f"{shape_sig}|{cols_sig}|{head_sig}|{tail_sig}".encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+def _compute_dataset_id(df: Optional[pd.DataFrame]) -> str:
+    """Compute a deterministic SHA-256 fingerprint of the complete DataFrame.
+
+    Includes the complete row contents, index, column names, and schema/dtype information.
+    """
+    if df is None:
+        return "none"
+    if df.empty:
+        schema = f"cols:{list(df.columns)}|dtypes:{list(df.dtypes.astype(str))}|idx:{df.index.dtype}"
+        return hashlib.sha256(f"empty|{schema}".encode("utf-8")).hexdigest()
+
+    row_bytes = pd.util.hash_pandas_object(df, index=True).to_numpy().tobytes()
+    schema_sig = f"cols:{list(df.columns)}|dtypes:{list(df.dtypes.astype(str))}|idx:{df.index.dtype}".encode("utf-8")
+
+    hasher = hashlib.sha256()
+    hasher.update(schema_sig)
+    hasher.update(row_bytes)
+    return hasher.hexdigest()
 
 
 def render_batch_prediction_view() -> None:

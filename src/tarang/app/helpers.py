@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import io
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -44,13 +44,31 @@ def get_decision_support_engine(
     )
 
 
+def normalize_participant_id(val: Any) -> Optional[str]:
+    """Normalize a participant identifier to a stripped string, or None if invalid.
+
+    Detects null, empty, and whitespace-only IDs.
+    Preserves support for numeric participant IDs (e.g. 101 -> '101').
+    """
+    if val is None or pd.isna(val):
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", "null"):
+        return None
+    if isinstance(val, (float, np.floating)) and float(val).is_integer():
+        return str(int(val))
+    if s.endswith(".0") and s[:-2].isdigit():
+        return s[:-2]
+    return s
+
+
 def validate_history_dataframe(
     df: Optional[pd.DataFrame],
 ) -> Tuple[bool, Optional[str], Optional[List[str]]]:
     """Validate user-uploaded completed session history for single-session inference.
 
     Handles numeric and string participant identifiers consistently and explicitly
-    rejects ambiguous histories with missing or partially missing identifiers.
+    rejects ambiguous histories with missing, empty, or whitespace-only identifiers.
 
     Args:
         df: Uploaded session history DataFrame.
@@ -73,12 +91,14 @@ def validate_history_dataframe(
     participants: Optional[List[str]] = None
     if "ParticipantID" in df.columns:
         p_series = df["ParticipantID"]
-        # Check if all rows are null
-        if p_series.isna().all():
+        normalized_series = p_series.apply(normalize_participant_id)
+
+        # Check if all rows are invalid (null, empty, whitespace-only)
+        if normalized_series.isna().all():
             return False, "ParticipantID column is present but contains only missing/null values.", None
 
-        # Check for mixed nulls (some null rows alongside identified records)
-        if p_series.isna().any():
+        # Check for any invalid values alongside identified records
+        if normalized_series.isna().any():
             return (
                 False,
                 "Uploaded history contains rows with missing/null participant identifiers alongside identified records. "
@@ -86,9 +106,7 @@ def validate_history_dataframe(
                 None,
             )
 
-        # Convert identifiers (numeric or string) to clean strings
-        raw_unique = p_series.dropna().unique()
-        unique_p = sorted(list(set(str(x).strip() for x in raw_unique if str(x).strip())))
+        unique_p = sorted(list(set(normalized_series.dropna())))
 
         if len(unique_p) == 0:
             return False, "ParticipantID column contains no valid non-empty identifiers.", None

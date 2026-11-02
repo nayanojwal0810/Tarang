@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tarang.app.batch_prediction import _compute_dataset_id
 from tarang.app.helpers import (
     convert_dataframe_to_csv_bytes,
     get_sample_batch_dataframe,
     get_sample_history_csv,
+    normalize_participant_id,
     validate_batch_dataframe,
     validate_history_dataframe,
 )
@@ -110,6 +112,111 @@ def test_validate_history_dataframe_null_participants_rejection() -> None:
     assert not ok_mix
     assert "missing/null participant identifiers" in str(err_mix)
     assert p_mix is None
+
+
+def test_normalize_participant_id_cases() -> None:
+    """Verify normalize_participant_id handles numeric, whitespace, and null cases correctly."""
+    # Numeric IDs
+    assert normalize_participant_id(101) == "101"
+    assert normalize_participant_id(101.0) == "101"
+
+    # Leading and trailing whitespace
+    assert normalize_participant_id("  WP1-001  ") == "WP1-001"
+    assert normalize_participant_id(" 102 ") == "102"
+
+    # Whitespace-only, empty, and null/nan identifiers
+    assert normalize_participant_id("   ") is None
+    assert normalize_participant_id("") is None
+    assert normalize_participant_id(None) is None
+    assert normalize_participant_id(np.nan) is None
+    assert normalize_participant_id("nan") is None
+    assert normalize_participant_id("None") is None
+
+
+def test_validate_history_dataframe_whitespace_and_invalid_identifiers() -> None:
+    """Verify history validator rejects whitespace-only IDs and normalizes whitespace."""
+    # Case 1: Whitespace-only ID mixed with valid ID -> rejected
+    df_whitespace_mixed = pd.DataFrame(
+        [
+            {"ParticipantID": "WP1-001", "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": "   ", "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok_ws, err_ws, p_ws = validate_history_dataframe(df_whitespace_mixed)
+    assert not ok_ws
+    assert "missing/null participant identifiers" in str(err_ws)
+    assert p_ws is None
+
+    # Case 2: Empty string ID mixed with valid ID -> rejected
+    df_empty_mixed = pd.DataFrame(
+        [
+            {"ParticipantID": "WP1-001", "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": "", "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok_em, err_em, p_em = validate_history_dataframe(df_empty_mixed)
+    assert not ok_em
+    assert "missing/null participant identifiers" in str(err_em)
+    assert p_em is None
+
+    # Case 3: Valid IDs with leading and trailing whitespace -> normalized cleanly
+    df_ws_valid = pd.DataFrame(
+        [
+            {"ParticipantID": "  WP1-001  ", "StartTime": "2018-05-10 18:00:00", "StopTime": "2018-05-11 06:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": " WP1-002 ", "StartTime": "2018-05-12 18:00:00", "StopTime": "2018-05-13 06:00:00", "ConsumedkWh": 20.0},
+        ]
+    )
+    ok_clean, err_clean, p_clean = validate_history_dataframe(df_ws_valid)
+    assert ok_clean
+    assert err_clean is None
+    assert p_clean == ["WP1-001", "WP1-002"]
+
+
+def test_history_filtering_normalized_participant() -> None:
+    """Verify history filtering matches normalized participant and excludes others."""
+    raw_df = pd.DataFrame(
+        [
+            {"ParticipantID": " 101 ", "StartTime": "2026-11-01 10:00:00", "StopTime": "2026-11-01 18:00:00", "ConsumedkWh": 15.0},
+            {"ParticipantID": 102, "StartTime": "2026-11-02 10:00:00", "StopTime": "2026-11-02 18:00:00", "ConsumedkWh": 20.0},
+            {"ParticipantID": "101", "StartTime": "2026-11-03 10:00:00", "StopTime": "2026-11-03 18:00:00", "ConsumedkWh": 25.0},
+        ]
+    )
+    # Apply normalization as single_prediction does
+    raw_df["ParticipantID"] = raw_df["ParticipantID"].apply(normalize_participant_id)
+    filtered = raw_df[raw_df["ParticipantID"].notna() & (raw_df["ParticipantID"] == "101")].copy()
+
+    assert len(filtered) == 2
+    assert list(filtered["ParticipantID"]) == ["101", "101"]
+    assert "102" not in list(filtered["ParticipantID"])
+
+
+def test_compute_dataset_id_fingerprint() -> None:
+    """Verify _compute_dataset_id changes when middle row, index, or dtype changes."""
+    df1, _ = get_sample_batch_dataframe(n_rows=25)
+    id1 = _compute_dataset_id(df1)
+
+    # 1. Modify middle row only (keep shape, columns, first and last rows identical)
+    df2 = df1.copy()
+    mid_idx = 12
+    df2.loc[mid_idx, "CarKW"] = df2.loc[mid_idx, "CarKW"] + 10.0
+    assert df1.shape == df2.shape
+    assert list(df1.columns) == list(df2.columns)
+    assert df1.iloc[0].equals(df2.iloc[0])
+    assert df1.iloc[-1].equals(df2.iloc[-1])
+    id2 = _compute_dataset_id(df2)
+    assert id1 != id2
+
+    # 2. Modify index
+    df3 = df1.copy()
+    df3.index = range(100, 125)
+    id3 = _compute_dataset_id(df3)
+    assert id1 != id3
+
+    # 3. Modify column dtype
+    df4 = df1.copy()
+    df4["holiday"] = df4["holiday"].astype(float)
+    id4 = _compute_dataset_id(df4)
+    assert id1 != id4
 
 
 def test_sample_history_relative_timestamps() -> None:
