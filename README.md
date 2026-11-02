@@ -1,24 +1,25 @@
 # TARANG — EV Charging Intelligence System
 
-TARANG uses charging session history and vehicle details to estimate how long an electric vehicle will stay connected to a charger and how much energy it will use.
+TARANG uses electric vehicle charging history and vehicle details to predict session connection duration and energy use. It also provides session-level advisory information based on those predictions and historical charging patterns.
 
-The system also reviews historical charging patterns and provides session-level advisory information. It does not control chargers or create charging schedules.
+TARANG is a Python analysis and prediction pipeline. It does not control chargers, create charging schedules, or dispatch energy.
 
-## What the system does
+## What it does
 
-TARANG provides four main functions:
+- Checks and prepares charging session data.
+- Summarizes charging times, duration, energy use, and participant activity.
+- Trains and compares models for duration and energy prediction.
+- Produces predictions for single sessions and batches.
+- Calculates projected unplug times and historical flexibility summaries.
 
-1. Prepare and check charging session data.
-2. Explore charging times, connection duration, energy use, and participant activity.
-3. Train and compare models for duration and energy predictions.
-4. Generate single-session and batch predictions, projected unplug times, and historical flexibility summaries.
+The model predicts two targets:
 
-The two prediction targets are:
+| Target | Meaning | Unit |
+|---|---|---|
+| `Duration` | Time from plug-in to unplug. The training target is capped at 336 hours. | Hours |
+| `ConsumedkWh` | Energy delivered during the session. | kWh |
 
-- `Duration`: plugged-in connection time in hours. The training target is capped at 336 hours.
-- `ConsumedkWh`: energy delivered during the session in kilowatt-hours.
-
-The models use 13 inputs that are available at or before plug-in time:
+Each model uses 13 inputs available at or before plug-in time:
 
 ```python
 [
@@ -29,33 +30,50 @@ The models use 13 inputs that are available at or before plug-in time:
 ]
 ```
 
-## How the system works
+## Project workflow
 
-The main workflow is:
+```mermaid
+flowchart TD
+    A["Electric Nation workbooks"] --> B["Data audit and preparation"]
+    B --> C["Prepared sessions and 13 model inputs"]
+    C --> D["Data exploration and model training"]
+    D --> E["Model evaluation"]
+    D --> F["Saved trained models"]
+    G["Single-session or batch input"] --> H["Inference"]
+    F --> H
+    H --> I["Duration and energy predictions"]
+    I --> J["Session-level decision support"]
+    C --> J
+    J --> K["Projected unplug time and historical flexibility summary"]
+```
 
-1. Read the Electric Nation transaction and charger installation workbooks.
-2. Check data quality and prepare the session dataset.
-3. Review the data through summary tables and plots.
-4. Train and compare six prediction models for both targets.
-5. Review model errors, participant-level results, and feature importance.
-6. Run predictions for one session or a batch of sessions.
-7. Create session advisories and historical flexibility summaries.
+## Model comparison
 
-## Project results
+The table shows results on the later 20% of the data (11,904 test sessions). Lower values indicate smaller errors.
 
-The current processed dataset contains 59,520 sessions from 267 participants. The reports directory contains the data audit, data exploration results, model evaluation reports, plots, and decision support summaries.
+| Model | Duration MAE (h) | Duration MdAPE (%) | Energy MAE (kWh) | Energy MdAPE (%) |
+|---|---:|---:|---:|---:|
+| LinearRegression | 6.45 | 34.5 | 4.44 | 32.5 |
+| QuantileRegressor | 6.08 | 31.3 | 4.34 | 31.6 |
+| HistGradientBoostingRegressor | 5.53 | 23.4 | 3.83 | 25.0 |
+| MedianValue | 7.08 | 36.0 | 6.00 | 49.3 |
+| MeanValue | 7.08 | 34.5 | 6.91 | 64.4 |
+| LastValue | 8.93 | 57.1 | 5.10 | 37.2 |
 
-Start with these reports:
+MAE is mean absolute error. MdAPE is median absolute percentage error. HistGradientBoostingRegressor has the lowest MAE and MdAPE for both targets in this comparison. For energy, MedianValue has the lowest MAPE (236.1%); see the [energy evaluation report](reports/modeling/energy/evaluation_summary.md) for the full results and metric definitions.
 
-- [Dataset audit](reports/data_audit/dataset_audit_report.md)
-- [Exploratory data analysis](reports/eda/eda_summary.md)
-- [Duration model results](reports/modeling/duration/evaluation_summary.md)
-- [Energy model results](reports/modeling/energy/evaluation_summary.md)
-- [Decision support results](reports/decision_support/decision_support_summary.md)
+The current processed dataset contains 59,520 sessions from 267 participants. The [reports folder](reports/) contains the data audit, exploration results, model evaluations, figures, and decision support summary.
 
-## Set up the project
+## Technology
 
-TARANG requires Python 3.10 or later.
+- **Language:** Python 3.10+
+- **Data processing:** pandas, NumPy, PyArrow, openpyxl
+- **Machine learning and statistics:** scikit-learn, SciPy, statsmodels, SHAP
+- **Plots:** Matplotlib, Seaborn
+- **Model files:** joblib
+- **Tests:** pytest
+
+## Set up
 
 Clone the repository and install the package:
 
@@ -65,18 +83,16 @@ cd Tarang
 pip install -e ".[dev]"
 ```
 
-Place the two source workbooks in `data/raw/electric_nation/`:
+Place the source workbooks in `data/raw/electric_nation/`:
 
-- `CrowdCharge Transactions.xlsx`
-- `ChargerInstall.xlsx`
+- `CrowdCharge Transactions.xlsx` (sheet: `Transaction Data`)
+- `ChargerInstall.xlsx` (sheet: `20181126_ChargerInstall_DriveEl`)
 
-The transaction workbook uses the `Transaction Data` sheet. The charger workbook uses the `20181126_ChargerInstall_DriveEl` sheet.
-
-Raw workbooks, processed datasets, and trained model files stay outside Git.
+Raw workbooks, processed datasets, and trained model files are not stored in Git.
 
 ## Run the workflow
 
-Run the preparation and model commands in order. After the model files exist, use the last two commands to view the inference and decision support options.
+Run the preparation and modeling commands in order:
 
 ```bash
 python scripts/run_data_audit.py
@@ -84,13 +100,16 @@ python scripts/prepare_data.py
 python scripts/run_eda.py
 python scripts/run_modeling.py
 python scripts/run_evaluation.py
+```
+
+After training, view the inference and decision support command options:
+
+```bash
 python scripts/run_inference.py --help
 python scripts/run_decision_support.py --help
 ```
 
-The audit and preparation commands create the processed session dataset. The modeling command trains the models. The evaluation command creates model reports and figures. The inference and decision support commands use the saved dataset and trained models.
-
-Run the test suite with:
+Run the tests with:
 
 ```bash
 pytest
@@ -98,12 +117,9 @@ pytest
 
 ## Predictions and advisory outputs
 
-TARANG supports two prediction modes:
+TARANG supports single-session prediction using an arrival time, vehicle details, and completed session history. It also supports batch prediction from a CSV or Parquet file containing the 13 model inputs.
 
-- Single session: provide an arrival time, vehicle specifications, and completed session history.
-- Batch sessions: provide a CSV or Parquet file containing the 13 model inputs.
-
-The inference command predicts one target at a time. The decision support command predicts both targets and adds:
+Decision support adds these fields to batch results:
 
 - `predicted_Duration`
 - `predicted_ConsumedkWh`
@@ -111,18 +127,28 @@ The inference command predicts one target at a time. The decision support comman
 - `duration_prediction_valid`
 - `energy_prediction_valid`
 
-The projected unplug time adds the predicted duration to the session arrival time. TARANG keeps the original model predictions and marks estimates as invalid when they are not finite and non-negative.
+The projected unplug time adds the predicted duration to the arrival time. TARANG keeps the original predictions and marks estimates as invalid when they are not finite and non-negative.
 
-## What the results do not provide
+A historical flexibility ratio describes the share of a connection period spent charging. It does not prove that the remaining time or energy can be shifted. TARANG does not schedule vehicles, optimize tariffs, or send commands to charging hardware.
 
-A predicted connection duration is not a confirmed departure time. A historical flexibility ratio describes the share of a connection period spent charging; it does not prove that the remaining time or energy can be shifted.
-
-TARANG does not schedule vehicles, optimize tariffs, dispatch energy, or send commands to charging hardware.
-
-## Project documentation
+## Documentation and reports
 
 - [Project structure](docs/architecture/project_structure.md)
 - [Data contract](docs/data/data_contract.md)
 - [Data dictionary](docs/data/data_dictionary.md)
 - [Inference contract](docs/inference/inference_contract.md)
 - [Decision support contract](docs/decision_support/decision_support_contract.md)
+- [Dataset audit](reports/data_audit/dataset_audit_report.md)
+- [Exploratory data analysis](reports/eda/eda_summary.md)
+- [Duration model results](reports/modeling/duration/evaluation_summary.md)
+- [Energy model results](reports/modeling/energy/evaluation_summary.md)
+- [Decision support results](reports/decision_support/decision_support_summary.md)
+
+## References and data
+
+- **Research paper:** [Kreft et al. (2024), *Predictability of electric vehicle charging: Explaining extensive user behavior-specific heterogeneity*, Applied Energy, 370, 123544](https://doi.org/10.1016/j.apenergy.2024.123544).
+- **Dataset:** [Electric Nation data — National Grid Electricity Distribution](https://commercial.nationalgrid.co.uk/electric-nation-data). The project uses the CrowdCharge transaction and Charger Install data. See the source page for access and data information.
+
+---
+
+Author: A. Nayanojwal Sri Tej
