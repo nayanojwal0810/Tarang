@@ -31,13 +31,13 @@ The screened cohort comprises **267 participants** monitored across the trial wi
 
 ## 2. Arrival Timing and Connection Duration Distributions
 
-- **Modal Local Arrival Hour**: 18:00 Local UK Time (`Europe/London`).
+- **Modal Local Arrival Hour**: 18:00 Local UK Time (`Europe/London`)
 - **Overall Raw Duration**:
   - Median: 11.45 hours
   - Mean: 12.14 hours
   - 75th Percentile: 14.92 hours
   - 95th Percentile: 25.77 hours
-- **Bivariate Pattern**: Evening arrivals stay connected overnight (12–16 hours), forming the dense joint cluster in `duration_by_start_hour.png`. Daytime arrivals feature shorter connection periods (2–6 hours).
+- **Distribution Output**: The joint distribution of connection durations across local UK arrival hours is visualized in `duration_by_start_hour.png` (binned in 0.5-hour increments up to the 72-hour cutoff).
 
 ---
 
@@ -48,7 +48,7 @@ The screened cohort comprises **267 participants** monitored across the trial wi
   - Mean: 10.44 kWh
   - 75th Percentile: 13.05 kWh
   - 95th Percentile: 29.48 kWh
-- **Bivariate Pattern**: Energy consumption ranges from top-ups (5–15 kWh) to full recharges across all arrival hours.
+- **Distribution Output**: The joint distribution of energy consumption across local UK arrival hours is visualized in `energy_by_start_hour.png` (binned in 0.5-hour arrival and 0.5-kWh energy increments up to the 75-kWh cutoff).
 
 ---
 
@@ -60,11 +60,12 @@ $$\text{Flexibility Ratio} = \frac{\text{ChargingDuration} / 60}{(\text{StopTime
 
 Evaluated using local UK dates (`Europe/London`):
 
-| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio | Primary Characteristic |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Same-Day Sessions** | 21,700 | 15,947 | 0.689 | 0.780 | Lower flexibility; vehicle unplugged shortly after charging completes |
-| **Overnight Sessions** | 37,820 | 29,348 | 0.188 | 0.143 | High flexibility; vehicle remains connected for 10–14 hours with 2–4 hours of active charging |
+| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio |
+| :--- | :---: | :---: | :---: | :---: |
+| **Same-Day Sessions** | 21,700 | 15,947 | 0.689 | 0.780 |
+| **Overnight Sessions** | 37,820 | 29,348 | 0.188 | 0.143 |
 
 **Key Findings:**
-- Overnight sessions exhibit a median flexibility ratio of **0.143**, indicating vehicles spend approximately **85.7%** of their connection window idle.
-- This surplus connection time represents the primary operational buffer for managed charging and tariff optimization.
+- Same-day sessions exhibit a median flexibility ratio of **0.780** (mean: **0.689**).
+- Overnight sessions exhibit a median flexibility ratio of **0.143** (mean: **0.188**).
+- The full ratio distributions across 25 uniform bins in [0, 1] are rendered in `charging_flexibility.png`.

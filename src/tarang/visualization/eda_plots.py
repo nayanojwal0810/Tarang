@@ -12,6 +12,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt

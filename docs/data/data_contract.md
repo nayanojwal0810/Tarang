@@ -33,7 +33,7 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 | `TimeSinceLastStop` | `float64` | Hours | $\ge 0.0$ | Known at $t_0$ (from prior session) | Elapsed hours between previous session `StopTime` and current `StartTime` per participant. Sessions with negative gaps removed without gap recalculation. |
 | `sessionsToday` | `int64` | Count ($\ge 0$) | Integer $\ge 0$ | Known at $t_0$ (from prior sessions) | Daily cumulative count of prior sessions initiated by the participant on consecutive dates on or before `StartTime`. |
 | `LastDuration` | `float64` | Hours | $0.0833 \le \text{LastDuration} \le 336.0$ | Known at $t_0$ (from prior session) | Elapsed duration in hours of immediately preceding session. The first retained session receives the duration of the dropped preceding session (zero missingness). |
-| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $0.01 \le \text{LastConsumedkWh} \le 100.0$ | Known at $t_0$ (from prior session) | Delivered energy of immediately preceding session. The first retained session receives the energy of the dropped preceding session (missingness preserved without backward searching). |
+| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $\ge 0.01$ (unbounded above; reflects actual preceding energy including readings $> 100$ kWh; preserves nulls) | Known at $t_0$ (from prior session) | Delivered energy of immediately preceding session. The first retained session receives the energy of the dropped preceding session (readings above 100 kWh retained without clipping; missingness preserved without backward searching). |
 | `CarKW` | `float64` | Kilowatts (kW) | $\in \{3.6, 7.0\}$ | Known prior to arrival | On-board charger maximum power rating from trial record. |
 | `CarKWh` | `float64` | Kilowatt-hours (kWh) | $4.4 \le \text{CarKWh} \le 100.0$ | Known prior to arrival | Usable battery capacity from trial record. |
 
@@ -56,10 +56,10 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 - **Definition**: Total cumulative electrical energy supplied by the charger to the vehicle battery during the session.
 - **Source**: `ConsumedkWh`.
 - **Units**: Kilowatt-hours (kWh, `float64`).
-- **Plausibility Thresholds**:
-  - Valid range: $[0.01, 100.0]$ kWh.
-  - Readings $> 100.0$ kWh are flagged as implausibly high per the official trial findings.
-  - Missing energy: Retained without exclusion during screening; missing energy is preserved in the research dataset without artificial exclusion.
+- **Audit Plausibility vs. Canonical Screening**:
+  - The 100.0 kWh threshold serves strictly as a non-destructive data quality audit plausibility flag to identify anomalous readings per official trial findings.
+  - **No filtering or clipping**: The canonical data preparation pipeline does **not** filter out, clip, or alter sessions with `ConsumedkWh > 100.0` kWh. All observed energy readings (including readings reaching extreme values $> 100.0$ kWh) are retained intact.
+  - **Missing energy preservation**: Missing energy values are preserved without exclusion or imputation during screening.
 
 ---
 

@@ -50,9 +50,9 @@ def calculate_data_availability(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[st
     for pid, group in df.groupby(group_col, sort=True):
         start_min = group["StartTime"].min()
         stop_max = group["StopTime"].max()
-        span_days = max(1, (stop_max - start_min).days)
+        span_days = (stop_max - start_min).days
         n_sessions = len(group.index)
-        weekly_freq = n_sessions / span_days * 7.0
+        weekly_freq = (n_sessions / span_days * 7.0) if span_days > 0 else 0.0
         durations = (group["StopTime"] - group["StartTime"]).dt.total_seconds() / 3600.0
         mean_dur = float(durations.mean())
 
@@ -202,7 +202,10 @@ def generate_eda_markdown_summary(
 
     start_local = pd.to_datetime(df["StartTime"]).dt.tz_convert("Europe/London") if not df.empty else pd.Series(dtype=float)
     arrival_hours = start_local.dt.hour if not df.empty else pd.Series(dtype=int)
-    top_arrival_hour = int(arrival_hours.mode().iloc[0]) if not arrival_hours.empty else 18
+    if not arrival_hours.empty and len(arrival_hours.mode()) > 0:
+        top_arrival_hour_str = f"{int(arrival_hours.mode().iloc[0]):02d}:00 Local UK Time (`Europe/London`)"
+    else:
+        top_arrival_hour_str = "Unavailable"
 
     formula_str = "$$\\text{Flexibility Ratio} = \\frac{\\text{ChargingDuration} / 60}{(\\text{StopTime} - \\text{StartTime})_{\\text{hours}}}$$"
 
@@ -239,13 +242,13 @@ The screened cohort comprises **{n_participants} participants** monitored across
 
 ## 2. Arrival Timing and Connection Duration Distributions
 
-- **Modal Local Arrival Hour**: {top_arrival_hour:02d}:00 Local UK Time (`Europe/London`).
+- **Modal Local Arrival Hour**: {top_arrival_hour_str}
 - **Overall Raw Duration**:
   - Median: {raw_dur.median():.2f} hours
   - Mean: {raw_dur.mean():.2f} hours
   - 75th Percentile: {raw_dur.quantile(0.75):.2f} hours
   - 95th Percentile: {raw_dur.quantile(0.95):.2f} hours
-- **Bivariate Pattern**: Evening arrivals stay connected overnight (12–16 hours), forming the dense joint cluster in `duration_by_start_hour.png`. Daytime arrivals feature shorter connection periods (2–6 hours).
+- **Distribution Output**: The joint distribution of connection durations across local UK arrival hours is visualized in `duration_by_start_hour.png` (binned in 0.5-hour increments up to the 72-hour cutoff).
 
 ---
 
@@ -256,7 +259,7 @@ The screened cohort comprises **{n_participants} participants** monitored across
   - Mean: {energy.mean():.2f} kWh
   - 75th Percentile: {energy.quantile(0.75):.2f} kWh
   - 95th Percentile: {energy.quantile(0.95):.2f} kWh
-- **Bivariate Pattern**: Energy consumption ranges from top-ups (5–15 kWh) to full recharges across all arrival hours.
+- **Distribution Output**: The joint distribution of energy consumption across local UK arrival hours is visualized in `energy_by_start_hour.png` (binned in 0.5-hour arrival and 0.5-kWh energy increments up to the 75-kWh cutoff).
 
 ---
 
@@ -268,13 +271,14 @@ The charging flexibility ratio is defined as:
 
 Evaluated using local UK dates (`Europe/London`):
 
-| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio | Primary Characteristic |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Same-Day Sessions** | {flexibility_stats['same_day_total']:,} | {flexibility_stats['same_day_in_range']:,} | {flexibility_stats['same_day_mean_ratio']:.3f} | {flexibility_stats['same_day_median_ratio']:.3f} | Lower flexibility; vehicle unplugged shortly after charging completes |
-| **Overnight Sessions** | {flexibility_stats['overnight_total']:,} | {flexibility_stats['overnight_in_range']:,} | {flexibility_stats['overnight_mean_ratio']:.3f} | {flexibility_stats['overnight_median_ratio']:.3f} | High flexibility; vehicle remains connected for 10–14 hours with 2–4 hours of active charging |
+| Session Category | Total Sessions | Evaluated in [0, 1] | Mean Ratio | Median Ratio |
+| :--- | :---: | :---: | :---: | :---: |
+| **Same-Day Sessions** | {flexibility_stats['same_day_total']:,} | {flexibility_stats['same_day_in_range']:,} | {flexibility_stats['same_day_mean_ratio']:.3f} | {flexibility_stats['same_day_median_ratio']:.3f} |
+| **Overnight Sessions** | {flexibility_stats['overnight_total']:,} | {flexibility_stats['overnight_in_range']:,} | {flexibility_stats['overnight_mean_ratio']:.3f} | {flexibility_stats['overnight_median_ratio']:.3f} |
 
 **Key Findings:**
-- Overnight sessions exhibit a median flexibility ratio of **{flexibility_stats['overnight_median_ratio']:.3f}**, indicating vehicles spend approximately **{round((1.0 - flexibility_stats['overnight_median_ratio']) * 100, 1)}%** of their connection window idle.
-- This surplus connection time represents the primary operational buffer for managed charging and tariff optimization.
+- Same-day sessions exhibit a median flexibility ratio of **{flexibility_stats['same_day_median_ratio']:.3f}** (mean: **{flexibility_stats['same_day_mean_ratio']:.3f}**).
+- Overnight sessions exhibit a median flexibility ratio of **{flexibility_stats['overnight_median_ratio']:.3f}** (mean: **{flexibility_stats['overnight_mean_ratio']:.3f}**).
+- The full ratio distributions across 25 uniform bins in [0, 1] are rendered in `charging_flexibility.png`.
 """
     return report

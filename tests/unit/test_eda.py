@@ -10,6 +10,11 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.axes
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,6 +23,10 @@ from tarang.analysis.exploratory_data_analysis import (
     calculate_charging_flexibility,
     calculate_data_availability,
     generate_eda_markdown_summary,
+)
+from tarang.visualization.eda_plots import (
+    plot_duration_by_start_hour,
+    plot_energy_by_start_hour,
 )
 
 
@@ -123,34 +132,107 @@ def test_eda_markdown_summary_generation() -> None:
     assert "Participant Data Availability" in md
     assert "Smart-Charging Flexibility Ratio" in md
 
-
-def test_uk_local_time_winter_summer_offsets() -> None:
-    """EDA arrival hour calculation reflects Europe/London winter (GMT=UTC) and summer (BST=UTC+1) offsets."""
-    # Winter: January (GMT, offset +0)
-    winter_utc = pd.Timestamp("2017-01-15 14:00:00", tz="UTC")
-    winter_local = winter_utc.tz_convert("Europe/London")
-    assert winter_local.hour == 14
-
-    # Summer: July (BST, offset +1)
-    summer_utc = pd.Timestamp("2017-07-15 14:00:00", tz="UTC")
-    summer_local = summer_utc.tz_convert("Europe/London")
-    assert summer_local.hour == 15
+    # Empty DataFrame yields "Unavailable" for modal arrival hour rather than a hard-coded default
+    md_empty = generate_eda_markdown_summary(avail_stats, flex_stats, pd.DataFrame())
+    assert "Unavailable" in md_empty
 
 
-def test_half_hour_bins_for_energy_and_duration_histograms() -> None:
-    """Bivariate histograms use 0.5-hour increments for arrival time and 0.5 units for targets."""
-    # Arrival hour: 0 to 24 with 0.5h step -> 49 bin edges (48 bins)
-    x_bins = np.arange(0.0, 24.5, 0.5)
-    assert len(x_bins) == 49
+def test_uk_local_time_winter_summer_offsets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Duration and energy plotting paths convert UTC to Europe/London across winter (GMT) and summer (BST)."""
+    captured_duration_args: dict[str, Any] = {}
+    captured_energy_args: dict[str, Any] = {}
+    orig_hist2d = matplotlib.axes.Axes.hist2d
 
-    # Duration: 0 to 72 with 0.5h step -> 145 bin edges (144 bins)
-    dur_bins = np.arange(0.0, 72.5, 0.5)
-    assert len(dur_bins) == 145
+    def mock_hist2d(self, x, y, bins=None, **kwargs):
+        data_len = len(np.asarray(x))
+        if data_len == 2:
+            if "x" not in captured_duration_args:
+                captured_duration_args["x"] = np.asarray(x)
+                captured_duration_args["y"] = np.asarray(y)
+                captured_duration_args["bins"] = bins
+            else:
+                captured_energy_args["x"] = np.asarray(x)
+                captured_energy_args["y"] = np.asarray(y)
+                captured_energy_args["bins"] = bins
+        return orig_hist2d(self, x, y, bins=bins, **kwargs)
 
-    # Energy: 0 to 75 with 0.5 kWh step -> 151 bin edges (150 bins)
-    energy_bins = np.arange(0.0, 75.5, 0.5)
-    assert len(energy_bins) == 151
-    assert pytest.approx(energy_bins[1] - energy_bins[0]) == 0.5
+    monkeypatch.setattr(matplotlib.axes.Axes, "hist2d", mock_hist2d)
+
+    # DataFrame with winter GMT and summer BST timestamps
+    df_test = pd.DataFrame({
+        "StartTime": [
+            pd.Timestamp("2017-01-15 14:00:00", tz="UTC"),  # Winter GMT (+0) -> 14.0 local
+            pd.Timestamp("2017-07-15 14:00:00", tz="UTC"),  # Summer BST (+1) -> 15.0 local
+        ],
+        "StopTime": [
+            pd.Timestamp("2017-01-15 16:30:00", tz="UTC"),  # 2.5h duration
+            pd.Timestamp("2017-07-15 18:00:00", tz="UTC"),  # 4.0h duration
+        ],
+        "ConsumedkWh": [12.5, 35.0],
+    })
+
+    # Execute production plotting functions
+    dur_file = tmp_path / "duration.png"
+    energy_file = tmp_path / "energy.png"
+
+    plot_duration_by_start_hour(df_test, dur_file, max_duration=72.0)
+    plot_energy_by_start_hour(df_test, energy_file, max_energy=75.0)
+
+    # 1. Verify duration plot path converts UTC to Europe/London before extracting arrival hours
+    assert "x" in captured_duration_args
+    assert pytest.approx(captured_duration_args["x"][0]) == 14.0  # Winter GMT
+    assert pytest.approx(captured_duration_args["x"][1]) == 15.0  # Summer BST
+    assert pytest.approx(captured_duration_args["y"][0]) == 2.5
+    assert pytest.approx(captured_duration_args["y"][1]) == 4.0
+
+    # 2. Verify energy plot path uses the same Europe/London conversion
+    assert "x" in captured_energy_args
+    assert pytest.approx(captured_energy_args["x"][0]) == 14.0  # Winter GMT
+    assert pytest.approx(captured_energy_args["x"][1]) == 15.0  # Summer BST
+    assert pytest.approx(captured_energy_args["y"][0]) == 12.5
+    assert pytest.approx(captured_energy_args["y"][1]) == 35.0
+
+
+def test_half_hour_bins_for_energy_and_duration_histograms(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Production plotting functions pass half-hour arrival bins, half-hour duration bins, and half-kWh energy bins."""
+    captured_bins: dict[str, Any] = {}
+    orig_hist2d = matplotlib.axes.Axes.hist2d
+
+    def mock_hist2d(self, x, y, bins=None, **kwargs):
+        if "dur_bins" not in captured_bins:
+            captured_bins["dur_bins"] = bins
+        else:
+            captured_bins["energy_bins"] = bins
+        return orig_hist2d(self, x, y, bins=bins, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "hist2d", mock_hist2d)
+
+    df_test = pd.DataFrame({
+        "StartTime": [pd.Timestamp("2017-05-01 10:00:00", tz="UTC")],
+        "StopTime": [pd.Timestamp("2017-05-01 12:00:00", tz="UTC")],
+        "ConsumedkWh": [20.0],
+    })
+
+    plot_duration_by_start_hour(df_test, tmp_path / "dur.png", max_duration=72.0)
+    plot_energy_by_start_hour(df_test, tmp_path / "energy.png", max_energy=75.0)
+
+    # Duration plot bins:
+    # x: 0 to 24 with 0.5h step (49 edges)
+    # y: 0 to 72 with 0.5h step (145 edges)
+    dur_x_bins, dur_y_bins = captured_bins["dur_bins"]
+    assert len(dur_x_bins) == 49
+    assert pytest.approx(dur_x_bins[1] - dur_x_bins[0]) == 0.5
+    assert len(dur_y_bins) == 145
+    assert pytest.approx(dur_y_bins[1] - dur_y_bins[0]) == 0.5
+
+    # Energy plot bins:
+    # x: 0 to 24 with 0.5h step (49 edges)
+    # y: 0 to 75 with 0.5 kWh step (151 edges)
+    energy_x_bins, energy_y_bins = captured_bins["energy_bins"]
+    assert len(energy_x_bins) == 49
+    assert pytest.approx(energy_x_bins[1] - energy_x_bins[0]) == 0.5
+    assert len(energy_y_bins) == 151
+    assert pytest.approx(energy_y_bins[1] - energy_y_bins[0]) == 0.5
 
 
 def test_population_standard_deviation_and_unrounded_participant_inputs() -> None:

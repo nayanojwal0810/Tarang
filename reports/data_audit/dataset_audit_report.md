@@ -81,7 +81,7 @@ A rigorous natural-session matching investigation was conducted on the 3,899 una
 
 ## 5. Overlap Detection with Nested Overlap Resolution
 
-The session overlap check was implemented using the cumulative maximum stop time of all earlier sessions for each participant:
+The non-destructive session overlap diagnostic was evaluated using the cumulative maximum stop time of all earlier sessions for each participant:
 
 $$\text{Overlap Condition: } \text{StartTime}_i < \max_{j < i} (\text{StopTime}_j)$$
 
@@ -89,6 +89,9 @@ $$\text{Overlap Condition: } \text{StartTime}_i < \max_{j < i} (\text{StopTime}_
 - **Cumulative Max Earlier Overlaps**: **160 sessions** detected (0.2245% of transactions).
 - **Nested Overlaps Identified**: Exactly 27 nested overlapping sessions were uncovered where a session started after the immediately prior short session ended but before an earlier long session concluded.
 - Boundary sessions starting exactly when an earlier session ended (`StartTime == max(StopTime)`) are correctly treated as non-overlapping.
+
+> [!NOTE]
+> This cumulative-maximum overlap check is retained as a separate, non-destructive raw-data diagnostic to quantify nested concurrent sessions. It is explicitly distinct from the sequential negative-gap rule (`TimeSinceLastStop < 0` without gap recalculation) used in the canonical participant screening pipeline.
 
 ---
 
@@ -130,20 +133,21 @@ The planned modeling population screening was executed in strict order:
 
 | Step | Action | Filter / Rule Applied | Participants | Sessions |
 | :---: | :--- | :--- | ---:| ---:|
-| 1 | Baseline Population | Valid ParticipantID and valid timestamps | 300 | 71,264 |
+| 1 | Baseline Population | Timestamp-valid records (including records with null ParticipantID for global time normalization; participant grouping later naturally excludes null IDs) | 300 | 71,264 |
 | 2 | Exclude Trial 3 | `Trial != 3.0` | 300 | 65,141 |
 | 3 | Duration Filter | `dur_min >= 5.0` | 299 | 64,630 |
-| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | 299 | 64,630 |
-| 5 | Overlap Removal | Remove negative-gap overlap records | 299 | 60,601 |
-| 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,302 |
+| 4 | Chronological Sort | Sort by `StartTime` only within each participant | 299 | 64,630 |
+| 5 | Overlap Removal | Remove negative-gap overlap records (`TimeSinceLastStop < 0` without gap recalculation) | 299 | 60,601 |
+| 6 | Drop First Session | Lag initialization (first session dropped from final output, but populates first retained session lags) | 298 | 60,302 |
 | 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,246 |
 | 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | **267** | **59,520** |
 
 ### Screening Transition Details
-- **Step 5 (Overlap Removal)**: Yields 299 participants and 60,601 sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant). 1 participant had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,302 retained sessions**.
+- **Step 5 (Overlap Removal)**: Yields 299 participants and 60,601 sessions by sequentially removing records where `TimeSinceLastStop < 0`. This is explicitly distinct from the cumulative-maximum diagnostic.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant). 1 participant had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,302 retained sessions**. Importantly, while the first session is dropped from the final output, its duration and energy are used to populate `LastDuration` and `LastConsumedkWh` for each participant's first retained session.
 - **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **12 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,246 sessions) pass the minimum-history threshold.
 - **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,520 sessions**.
+- **Participant ID Enumeration**: Participant `id` values preserve the source group enumeration index (`i` in `enumerate(groupby("ParticipantID", sort=True))`). Retained participant IDs range from 1 to 298 across the 267 participants; they are non-contiguous and are not renumbered after filtering.
 
 ### Observation-Density Results
 - **Before Density Filtering**: 287 participants, 60,246 sessions.
@@ -161,20 +165,21 @@ The planned modeling population screening was executed in strict order:
 
 The planned model utilizes exactly **13 predictor inputs** and **2 prediction targets** evaluated at plug-in arrival ($t_0 = \text{StartTime}$):
 
-### 9.1 Planned Model Features (13 Inputs)
-1. `weekday`: UTC day of week (0..6 integer, Monday=0). Known at $t_0$.
-2. `weekend`: UTC weekend binary flag (1 if Saturday or Sunday, else 0). Known at $t_0$.
-3. `holiday`: UTC official UK bank holiday binary flag (1 if England & Wales holiday, else 0). Known at $t_0$.
-4. `month`: UTC calendar month (1..12 integer). Known at $t_0$.
-5. `StartCos`: $\cos(2\pi \cdot \text{hour}_{\text{float}} / 24.0)$ arrival cyclic component. Known at $t_0$.
-6. `StartSin`: $\sin(2\pi \cdot \text{hour}_{\text{float}} / 24.0)$ arrival cyclic component. Known at $t_0$.
-7. `StartHourNorm`: $\text{hour}_{\text{float}} / 24.0 \in [0.0, 1.0)$ normalized arrival hour. Known at $t_0$.
-8. `TimeSinceLastStop`: Hours elapsed since previous session `StopTime`. Historical lag. Missing on initial session.
-9. `sessionsToday`: Count of prior sessions initiated on same calendar date (UTC) before $t_0$. Historical lag.
-10. `LastDuration`: Duration in hours of immediately prior completed session. Historical lag. Missing on initial session.
-11. `LastConsumedkWh`: Energy consumed in kWh of immediately prior completed session. Historical lag. Missing on initial session.
-12. `CarKW`: Vehicle onboard charger power rating in kW. Static vehicle hardware specification.
-13. `CarKWh`: Usable battery capacity in kWh. Static vehicle hardware specification.
+### 9.1 Planned Model Features (13 Authoritative Predictors)
+Evaluated strictly at plug-in arrival ($t_0 = \text{StartTime}$) in UTC:
+1. `weekday`: Binary value, 1 for Monday–Friday and 0 otherwise; 0 on designated holidays. Known at $t_0$.
+2. `weekend`: Binary value, 1 for Saturday–Sunday and 0 otherwise; 0 on designated holidays. Known at $t_0$.
+3. `holiday`: Binary value for the exact 13 designated UK holiday dates (2017–2018). Known at $t_0$.
+4. `month`: UTC calendar month (1..12 integer) of `StartTime`. Known at $t_0$.
+5. `StartCos`: $\cos(2\pi \cdot \text{StartHourNorm})$ periodic arrival coordinate. Known at $t_0$.
+6. `StartSin`: $\sin(2\pi \cdot \text{StartHourNorm})$ periodic arrival coordinate. Known at $t_0$.
+7. `StartHourNorm`: Continuous arrival hour $\text{StartHour} / \max(\text{StartHour})$ over the entire filtered dataset (including records with null `ParticipantID`), where $\text{StartHour} = \text{hour} + \text{minute}/60 + \text{second}/3600$ in UTC. Known at $t_0$.
+8. `TimeSinceLastStop`: Hours elapsed since immediately preceding session `StopTime`, calculated from the immediately preceding session before negative-gap rows are removed (without subsequent gap recalculation). Historical lag.
+9. `sessionsToday`: Consecutive-date cumulative count on each participant's retained rows. Historical lag.
+10. `LastDuration`: Duration in hours of immediately preceding session. The first retained row receives the duration of the dropped preceding session (zero missingness in retained population). Historical lag.
+11. `LastConsumedkWh`: Energy consumed in kWh of immediately preceding session. The first retained row receives the energy of the dropped preceding session. Preserves a missing preceding energy value without backward searching (exactly 1 missing record in retained population). Preceding session readings above 100 kWh are retained without clipping. Historical lag.
+12. `CarKW`: Vehicle onboard charger power rating in kW (3.6 or 7.0 kW). Static vehicle hardware specification.
+13. `CarKWh`: Usable battery capacity in kWh (4.4 to 100.0 kWh). Static vehicle hardware specification.
 
 ### 9.2 Prediction Targets
 1. **Target 1: Plugged-In Duration (Hours)**: `(StopTime - StartTime) / 3600.0`, capped at 336.0 hours for the modeling target. Original `StopTime` is preserved for historical timing.
