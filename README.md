@@ -149,6 +149,7 @@ TARANG uses the Electric Nation trial dataset. See the [Electric Nation data pag
 ## Limitations
 
 - The models learn from one historical trial dataset. Their performance may differ for other EVs, chargers, regions, and charging behaviours.
+- The exact reuse and redistribution terms for the source files and derived model artifacts should be confirmed before further redistribution.
 - Evaluation uses a time-ordered holdout from the same dataset. Results do not establish performance on a new charging network or a live deployment.
 - The duration target is capped at 336 hours during data preparation.
 - Predictions are statistical estimates, not guarantees. The historical active-charging ratio does not identify guaranteed shiftable time or energy.
