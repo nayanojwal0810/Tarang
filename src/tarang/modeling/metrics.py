@@ -81,10 +81,12 @@ def symmetric_mean_absolute_percentage_error(
     if len(true) == 0:
         return float("nan")
     with np.errstate(divide="ignore", invalid="ignore"):
-        denom = np.abs(true) + np.abs(pred)
-        num = 2.0 * np.abs(true - pred)
-        ratio = np.where(denom == 0.0, 0.0, num / denom)
-        return float(np.sum(ratio) / len(true))
+        return float(
+            np.sum(
+                2.0 * np.abs(true - pred)
+                / (np.abs(true) + np.abs(pred))
+            ) / len(true)
+        )
 
 
 def calculate_metrics(
@@ -123,33 +125,31 @@ def calculate_metrics(
         ape = np.abs(ae / true)
 
     # Core summary metrics
-    results: Dict[str, float] = {
-        "medae": float(median_absolute_error(true, pred)),
-        "mae": float(mean_absolute_error(true, pred)),
-        "medape": float(np.median(ape)),
-        "mape": float(np.mean(ape)),
-        "rmse": float(np.sqrt(mean_squared_error(true, pred))),
-        "smape": float(symmetric_mean_absolute_percentage_error(true, pred)),
-    }
+    with np.errstate(divide="ignore", invalid="ignore"):
+        results: Dict[str, float] = {
+            "medae": float(median_absolute_error(true, pred)),
+            "mae": float(mean_absolute_error(true, pred)),
+            "medape": float(np.median(ape)),
+            "mape": float(np.mean(ape)),
+            "rmse": float(np.sqrt(mean_squared_error(true, pred))),
+            "smape": float(symmetric_mean_absolute_percentage_error(true, pred)),
+        }
 
     # Error distribution statistics for absolute error (ae) and percentage error (ape)
     for err_name, err in [("ae", ae), ("ape", ape)]:
-        valid_err = err[~np.isnan(err)]
-        if len(valid_err) == 0:
-            for stat in ["q1", "q2", "q3", "wl", "wh"]:
-                results[f"{stat}-{err_name}"] = float("nan")
-            continue
-
-        quantiles = np.quantile(valid_err, [0.25, 0.5, 0.75])
+        # Calculate quantiles on complete error vector without dropping NaNs
+        quantiles = np.quantile(err, [0.25, 0.5, 0.75])
         iqr = quantiles[2] - quantiles[0]
         lower_bound = quantiles[0] - 1.5 * iqr
         upper_bound = quantiles[0] + 1.5 * iqr
 
-        above_lower = valid_err[valid_err > lower_bound]
-        below_upper = valid_err[valid_err < upper_bound]
+        above_lower = err[err > lower_bound]
+        below_upper = err[err < upper_bound]
 
-        wl = float(above_lower.min()) if len(above_lower) > 0 else float(valid_err.min())
-        wh = float(below_upper.max()) if len(below_upper) > 0 else float(valid_err.max())
+        # In Pandas, an empty filtered Series yields NaN for min() and max().
+        # In NumPy, empty arrays raise an error on min()/max(), so we return NaN.
+        wl = float(above_lower.min()) if len(above_lower) > 0 else float("nan")
+        wh = float(below_upper.max()) if len(below_upper) > 0 else float("nan")
 
         results[f"q1-{err_name}"] = float(quantiles[0])
         results[f"q2-{err_name}"] = float(quantiles[1])
@@ -158,4 +158,3 @@ def calculate_metrics(
         results[f"wh-{err_name}"] = wh
 
     return results
-

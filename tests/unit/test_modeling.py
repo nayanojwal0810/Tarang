@@ -233,8 +233,8 @@ def test_feature_names_order() -> None:
 # Metric and Whisker Calculation Tests
 # ==============================================================================
 
-def test_metric_calculations_and_whiskers() -> None:
-    """Verify metric calculations, SMAPE, quantiles, and reference whisker formulas."""
+def test_ordinary_finite_metrics_against_reference_formulas() -> None:
+    """Verify all 16 metrics on ordinary finite values match reference calculations exactly."""
     y_true = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
     y_pred = np.array([12.0, 18.0, 33.0, 39.0, 55.0])
 
@@ -249,7 +249,11 @@ def test_metric_calculations_and_whiskers() -> None:
     np.testing.assert_array_almost_equal(se, [4.0, 4.0, 9.0, 1.0, 25.0])
 
     smape = symmetric_mean_absolute_percentage_error(y_true, y_pred)
-    assert 0.0 <= smape <= 2.0
+    expected_smape = float(
+        np.sum(2.0 * np.abs(y_true - y_pred) / (np.abs(y_true) + np.abs(y_pred)))
+        / len(y_true)
+    )
+    assert smape == pytest.approx(expected_smape)
 
     # Complete metrics dict
     metrics = calculate_metrics(y_true, y_pred)
@@ -261,17 +265,83 @@ def test_metric_calculations_and_whiskers() -> None:
     for k in expected_keys:
         assert k in metrics, f"Missing metric key '{k}'"
 
-    assert metrics["medae"] == 2.0
-    assert metrics["mae"] == 2.6
-    assert metrics["medape"] == 0.1
+    assert metrics["medae"] == pytest.approx(2.0)
+    assert metrics["mae"] == pytest.approx(2.6)
+    assert metrics["medape"] == pytest.approx(0.1)
+    assert metrics["mape"] == pytest.approx(0.105)
+    assert metrics["rmse"] == pytest.approx(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+    assert metrics["smape"] == pytest.approx(expected_smape)
 
-    # Exact whisker check against manual formula
-    q_ae = np.quantile(ae, [0.25, 0.5, 0.75])
-    iqr_ae = q_ae[2] - q_ae[0]
-    expected_wl = ae[ae > (q_ae[0] - 1.5 * iqr_ae)].min()
-    expected_wh = ae[ae < (q_ae[0] + 1.5 * iqr_ae)].max()
-    assert metrics["wl-ae"] == expected_wl
-    assert metrics["wh-ae"] == expected_wh
+    # Exact whisker check against reference pandas Series behavior
+    for name, err_arr in [("ae", ae), ("ape", ape)]:
+        s = pd.Series(err_arr)
+        q = np.quantile(s, [0.25, 0.5, 0.75])
+        iqr = q[2] - q[0]
+        wl = s[s > (q[0] - 1.5 * iqr)].min()
+        wh = s[s < (q[0] + 1.5 * iqr)].max()
+
+        assert metrics[f"q1-{name}"] == pytest.approx(q[0])
+        assert metrics[f"q2-{name}"] == pytest.approx(q[1])
+        assert metrics[f"q3-{name}"] == pytest.approx(q[2])
+        assert metrics[f"wl-{name}"] == pytest.approx(wl)
+        assert metrics[f"wh-{name}"] == pytest.approx(wh)
+
+
+def test_zero_actual_and_zero_predicted_smape_nan() -> None:
+    """Verify sMAPE propagates NaN when actual and predicted are both zero."""
+    y_true = np.array([0.0, 10.0])
+    y_pred = np.array([0.0, 12.0])
+
+    smape = symmetric_mean_absolute_percentage_error(y_true, y_pred)
+    assert np.isnan(smape), "sMAPE must be NaN when 0/0 division occurs"
+
+    metrics = calculate_metrics(y_true, y_pred)
+    assert np.isnan(metrics["smape"]), "calculate_metrics['smape'] must be NaN"
+
+
+def test_constant_absolute_errors_empty_whisker_returns_nan() -> None:
+    """Verify empty strict whisker selection returns NaN matching Pandas behavior."""
+    # Case A: Constant error across multiple samples
+    y_true = np.array([10.0, 20.0, 30.0, 40.0])
+    y_pred = np.array([12.0, 22.0, 32.0, 42.0])  # All AE = 2.0
+
+    metrics = calculate_metrics(y_true, y_pred)
+    assert metrics["medae"] == pytest.approx(2.0)
+    assert metrics["mae"] == pytest.approx(2.0)
+    assert metrics["q1-ae"] == pytest.approx(2.0)
+    assert metrics["q2-ae"] == pytest.approx(2.0)
+    assert metrics["q3-ae"] == pytest.approx(2.0)
+    # With IQR=0, error > lower_bound and error < upper_bound are empty
+    assert np.isnan(metrics["wl-ae"]), "Empty whisker selection must return NaN"
+    assert np.isnan(metrics["wh-ae"]), "Empty whisker selection must return NaN"
+
+    # Case B: Single sample (N=1)
+    metrics_single = calculate_metrics(np.array([15.0]), np.array([10.0]))
+    assert metrics_single["medae"] == pytest.approx(5.0)
+    assert np.isnan(metrics_single["wl-ae"]), "Single sample whisker must be NaN"
+    assert np.isnan(metrics_single["wh-ae"]), "Single sample whisker must be NaN"
+
+
+def test_nan_percentage_errors_propagation() -> None:
+    """Verify NaN percentage errors preserve reference NaN propagation in quantiles/whiskers."""
+    y_true = np.array([0.0, 10.0, 20.0])
+    y_pred = np.array([0.0, 12.0, 22.0])
+
+    metrics = calculate_metrics(y_true, y_pred)
+
+    # Percentage error has 0/0 = NaN, so percentage-based statistics propagate NaN
+    assert np.isnan(metrics["medape"]), "MedAPE must be NaN when APE contains NaN"
+    assert np.isnan(metrics["mape"]), "MAPE must be NaN when APE contains NaN"
+    assert np.isnan(metrics["smape"]), "sMAPE must be NaN when APE contains NaN"
+    assert np.isnan(metrics["q1-ape"]), "q1-ape must be NaN"
+    assert np.isnan(metrics["q2-ape"]), "q2-ape must be NaN"
+    assert np.isnan(metrics["q3-ape"]), "q3-ape must be NaN"
+    assert np.isnan(metrics["wl-ape"]), "wl-ape must be NaN"
+    assert np.isnan(metrics["wh-ape"]), "wh-ape must be NaN"
+
+    # Absolute error metrics remain finite
+    assert metrics["medae"] == pytest.approx(2.0)
+    assert metrics["mae"] == pytest.approx(4.0 / 3.0)
 
 
 # ==============================================================================
