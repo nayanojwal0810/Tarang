@@ -4,6 +4,8 @@ TARANG uses electric vehicle charging history and vehicle details to predict how
 
 TARANG provides information for review. It does not control chargers, schedule charging sessions, or dispatch energy.
 
+**[Open the TARANG web application](https://tarang-ev-intelligence.streamlit.app/)**
+
 ## What TARANG does
 
 - Checks and prepares Electric Nation charging records.
@@ -12,6 +14,12 @@ TARANG provides information for review. It does not control chargers, schedule c
 - Predicts one session from arrival details and completed charging history.
 - Predicts multiple sessions from a CSV or Parquet file.
 - Calculates projected unplug times and descriptive charging activity ratios.
+
+## Historical charging pattern
+
+![Historical active charging ratio for same-day and overnight sessions](reports/eda/charging_flexibility.png)
+
+This chart compares the share of each session spent actively charging. In these records, overnight sessions generally use a smaller share of their connection time for active charging. This describes past sessions; it does not show guaranteed time or energy that can be shifted.
 
 ## Prediction targets
 
@@ -140,10 +148,6 @@ The reports link to their supporting tables and figures.
 TARANG uses the Electric Nation trial data. See the [Electric Nation data page](https://commercial.nationalgrid.co.uk/electric-nation-data) for source information and access terms.
 
 TARANG produces statistical estimates from historical charging records. It does not connect to live chargers or grid systems, control charging hardware, create charging schedules, optimise tariffs, or guarantee available flexibility.
-
-## Application deployment
-
-The public Streamlit deployment still needs owner activation and live verification. The application URL is not listed as active until both prediction workflows have been checked online.
 
 ---
 
