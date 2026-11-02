@@ -15,11 +15,6 @@ TARANG provides information for review. It does not control chargers, schedule c
 - Predicts multiple sessions from a CSV or Parquet file.
 - Calculates projected unplug times and descriptive charging activity ratios.
 
-## Historical charging pattern
-
-![Historical active charging ratio for same-day and overnight sessions](reports/eda/charging_flexibility.png)
-
-This chart compares the share of each session spent actively charging. In these records, overnight sessions generally use a smaller share of their connection time for active charging. This describes past sessions; it does not show guaranteed time or energy that can be shifted.
 
 ## Prediction targets
 
@@ -68,11 +63,9 @@ The table shows results on the later 20% of the data (11,904 test sessions). Low
 
 MAE is mean absolute error. MdAPE is median absolute percentage error. HistGradientBoostingRegressor has the lowest MAE and MdAPE for both targets in this comparison. For energy, MedianValue has the lowest MAPE (236.1%). The model reports explain the full results and metric definitions.
 
-The figures below compare test-set performance across the candidate models for each prediction target.
+The figure below compares the candidate models for session-duration prediction. Duration is the key input to TARANG's projected unplug-time estimate.
 
 ![Duration model comparison](reports/modeling/duration/performance.png)
-
-![Energy model comparison](reports/modeling/energy/performance.png)
 
 The prepared dataset contains 59,520 sessions from 267 participants.
 
@@ -149,11 +142,23 @@ The reports link to their supporting tables and figures.
 - [Inference contract](docs/inference/inference_contract.md)
 - [Decision support contract](docs/decision_support/decision_support_contract.md)
 
-## Data source and limits
+## References
 
-TARANG uses the Electric Nation trial data. See the [Electric Nation data page](https://commercial.nationalgrid.co.uk/electric-nation-data) for source information and access terms.
+TARANG uses the Electric Nation trial dataset. See the [Electric Nation data page](https://commercial.nationalgrid.co.uk/electric-nation-data) for source information and access terms.
 
-TARANG produces statistical estimates from historical charging records. It does not connect to live chargers or grid systems, control charging hardware, create charging schedules, optimise tariffs, or guarantee available flexibility.
+## Limitations
+
+- The models learn from one historical trial dataset. Their performance may differ for other EVs, chargers, regions, and charging behaviours.
+- Evaluation uses a time-ordered holdout from the same dataset. Results do not establish performance on a new charging network or a live deployment.
+- The duration target is capped at 336 hours during data preparation.
+- Predictions are statistical estimates, not guarantees. The historical active-charging ratio does not identify guaranteed shiftable time or energy.
+- TARANG does not connect to live chargers or grid systems, control charging hardware, schedule sessions, optimise tariffs, or dispatch energy.
+
+## Future Scope
+
+- Validate the models on independent datasets from other EVs, chargers, and regions.
+- Add prediction intervals and monitor model performance as charging behaviour changes.
+- Evaluate optional live charger and grid-data integrations before considering operational decision support.
 
 ---
 
