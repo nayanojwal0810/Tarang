@@ -1,7 +1,7 @@
 # TARANG — Architecture and Project Structure
 
 **Domain**: Electric Vehicle Charging Intelligence System  
-**Current Stage**: Stage 2 — Benchmark Predictive Modeling (Dual-Target Regression)  
+**Current Stage**: Stage 3 — Model Evaluation, Behavioral Analysis & Explainability  
 **Repository**: `nayanojwal0810/Tarang`
 
 ---
@@ -52,12 +52,44 @@ Tarang/
 |       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour
 |       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour
 |       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
+|   |-- modeling/
+|       |-- duration/
+|       |   |-- evaluation_summary.md # Comprehensive Stage 3 duration evaluation report
+|       |   |-- performance.png       # Error boxplots across 6 benchmark models
+|       |   |-- best_model.png        # Histogram of HGBR error (all sessions vs per vehicle)
+|       |   |-- performance_over_features.png # Behavioral regressions (OLS against MdAPE)
+|       |   |-- model_agreement.png   # Pairwise model agreement with inset zoom
+|       |   |-- ae_over_time_hist.png # Relative change in MAE across test split
+|       |   |-- seasonality.png       # Monthly average MAPE over time (Train vs Test)
+|       |   |-- shap_values.png       # TreeSHAP global and participant-level feature importances
+|       |   |-- same_day_overnight_comparison.png # Subgroup performance comparison
+|       |   |-- heatmap-best-{0,1,2}.png # 4-state charging occupancy heatmaps
+|       |   |-- heatmap-worst-{0,1,2}.png
+|       |   |-- model_performance.csv
+|       |   |-- shap_global_importance.csv
+|       |   |-- shap_vehicle_importance.csv
+|       |   |-- same_day_overnight_metrics.csv
+|       |-- energy/
+|           |-- evaluation_summary.md
+|           |-- performance.png
+|           |-- best_model.png
+|           |-- performance_over_features.png
+|           |-- model_agreement.png
+|           |-- ae_over_time_hist.png
+|           |-- seasonality.png
+|           |-- shap_values.png
+|           |-- same_day_overnight_comparison.png
+|           |-- model_performance.csv
+|           |-- shap_global_importance.csv
+|           |-- shap_vehicle_importance.csv
+|           |-- same_day_overnight_metrics.csv
 |
 |-- scripts/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
 |   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
 |   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
 |   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
+|   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
 |   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
@@ -85,6 +117,14 @@ Tarang/
 |       |   |-- models.py            # Benchmark regressors (LR, QR, HGB) and baselines (Mean, Median, LastValue)
 |       |   |-- metrics.py           # Reference-aligned evaluation metrics and error distribution statistics
 |       |   |-- experiment.py        # Chronological split, training, evaluation, and artifact persistence
+|       |-- evaluation/              # Model evaluation, behavioral analysis, and explainability
+|       |   |-- __init__.py
+|       |   |-- loading.py           # MultiIndex performance, predictions, and model loader
+|       |   |-- analysis.py          # Benchmark tables, user characteristics, model agreement, seasonality
+|       |   |-- explainability.py    # TreeSHAP feature importance (global and vehicle distributions)
+|       |   |-- subgroup_analysis.py # Same-day vs overnight session partitioning and modeling
+|       |   |-- visualizations.py    # Publication-ready Matplotlib figures matching reference styling
+|       |   |-- reporting.py         # Dynamic Markdown evaluation report generator
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -167,9 +207,17 @@ Tarang/
 - **`metrics.py`**: Reference-aligned evaluation metrics (`medae`, `mae`, `medape`, `mape`, `rmse`, `smape`) and error-distribution statistics (`q1`, `q2`, `q3`, and whisker limits `wl`, `wh` for absolute and percentage errors).
 - **`experiment.py`**: Validates canonical inputs, performs chronological 80/20 train/test split, trains models, tracks predictions, evaluates aggregate (`ALL`) and per-participant metrics, and persists models and CSV artifacts.
 
+### 3.7 `tarang.evaluation`
+- **`loading.py`**: Validated loader for MultiIndex performance matrices, prediction logs, HGBR models, and feature datasets.
+- **`analysis.py`**: Benchmark comparison tables, participant distribution statistics, behavioral regressions (OLS against user MdAPE), model agreement, temporal stability, seasonality, and split data availability.
+- **`explainability.py`**: TreeSHAP global feature importance ranking and participant-level feature attribution distributions.
+- **`subgroup_analysis.py`**: Same-day vs overnight UTC date session partitioning, fresh HGBR training on 80/20 splits, and comparative performance evaluation.
+- **`visualizations.py`**: Publication-ready Matplotlib figures matching reference styling (error boxplots, error density, OLS feature fits, model agreement with insets, temporal degradation, seasonality, SHAP summary boxplots, subgroup comparisons, and 4-state charging occupancy heatmaps).
+- **`reporting.py`**: Automated dynamic Markdown report synthesis embedding quantitative findings and figures.
+
 ---
 
-## 4. Future Architecture Roadmap
+## 4. Architecture Roadmap
 
 The TARANG codebase is organized to support future stages without requiring architectural restructuring:
 
@@ -189,21 +237,23 @@ flowchart TD
         Regressors --> Eval["Performance Evaluation\n(Aggregate & Participant)"]
     end
 
-    subgraph Stage3["Stage 3: Explainability & Decision Support (Planned)"]
-        Regressors --> Explainability["Model Explainability &\nFeature Importance"]
-        Regressors --> DecisionSupport["Advisory Decision Support\n(Flexibility & Bay Planning)"]
+    subgraph Stage3["Stage 3: Evaluation, Behavioral Analysis & Explainability (Completed)"]
+        Regressors --> SHAP["TreeSHAP Feature\nImportance & Heterogeneity"]
+        Regressors --> Behavior["Behavioral Regressions &\nUser Characteristics"]
+        Regressors --> Subgroups["Subgroup Analysis\n(Same-day vs Overnight)"]
+        Regressors --> Reports["Publication Reports &\nOccupancy Heatmaps"]
+    end
+
+    subgraph Stage4["Stage 4: Decision Support & User Interface (Next)"]
+        Reports --> DecisionSupport["Advisory Decision Support\n(Flexibility & Bay Planning)"]
         DecisionSupport --> UserInterface["Interactive User Interface"]
     end
 ```
 
-1. **Stage 2 — Predictive Modeling**:
-   - `tarang.modeling.models`: Benchmark regressors and baselines for plugged-in duration and energy consumption.
-   - `tarang.modeling.metrics`: Established regression metrics and whisker distribution statistics.
-   - `tarang.modeling.experiment`: Chronological train/test splitting, training, evaluation, and artifact persistence.
-2. **Stage 3 — Explainability & Decision Support**:
-   - `tarang.explainability`: Global and local feature attribution and behavior explanation.
-   - `tarang.decision_support`: Advisory analytics for charging flexibility, bay planning, and demand shifting.
-   - `tarang.app`: User interface for interactive exploration and scenario analysis.
+1. **Stage 1 — Foundation & Data Pipeline** (Completed): Ingestion, audit, deterministic screening, 13 features, descriptive EDA.
+2. **Stage 2 — Benchmark Predictive Modeling** (Completed): Dual-target benchmark models (LR, QR, HGBR) and baselines (Mean, Median, LastValue).
+3. **Stage 3 — Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
+4. **Stage 4 — Advisory Decision Support & Application** (Planned): Smart charging decision support, bay scheduling flexibility, and interactive application.
 
 > [!NOTE]
 > TARANG's predictions and flexibility insights provide **advisory decision support**. The system does not perform automated charger hardware actuation or live grid switching.

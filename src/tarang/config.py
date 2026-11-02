@@ -38,6 +38,11 @@ MODELING_DIR: Path = DATA_PROCESSED_DIR / "modeling"
 DURATION_MODELING_DIR: Path = MODELING_DIR / "duration"
 ENERGY_MODELING_DIR: Path = MODELING_DIR / "energy"
 
+# Evaluation directories
+EVALUATION_DATA_DIR: Path = DATA_PROCESSED_DIR / "evaluation"
+DURATION_EVALUATION_DATA_DIR: Path = EVALUATION_DATA_DIR / "duration"
+ENERGY_EVALUATION_DATA_DIR: Path = EVALUATION_DATA_DIR / "energy"
+
 TARGET_DURATION: str = "Duration"
 TARGET_ENERGY: str = "ConsumedkWh"
 
@@ -66,6 +71,9 @@ MODEL_RANDOM_STATE: int = 0
 REPORTS_DIR: Path = PROJECT_ROOT / "reports"
 AUDIT_REPORTS_DIR: Path = REPORTS_DIR / "data_audit"
 EDA_REPORTS_DIR: Path = REPORTS_DIR / "eda"
+EVALUATION_REPORTS_DIR: Path = REPORTS_DIR / "modeling"
+DURATION_EVALUATION_REPORT_DIR: Path = EVALUATION_REPORTS_DIR / "duration"
+ENERGY_EVALUATION_REPORT_DIR: Path = EVALUATION_REPORTS_DIR / "energy"
 
 # ==============================================================================
 # Schema Definitions

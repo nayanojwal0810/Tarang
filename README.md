@@ -40,12 +40,44 @@ Tarang/
 |       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour (0.5h bins, Europe/London)
 |       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour (0.5h, 0.5 kWh bins, Europe/London)
 |       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
+|   |-- modeling/
+|       |-- duration/
+|       |   |-- evaluation_summary.md # Comprehensive Stage 3 duration evaluation report
+|       |   |-- performance.png       # Side-by-side error boxplots across 6 benchmark models
+|       |   |-- best_model.png        # Histogram of HGBR error (all sessions vs per vehicle)
+|       |   |-- performance_over_features.png # MdAPE dependence on behavioral characteristics (OLS fits)
+|       |   |-- model_agreement.png   # Pairwise model agreement with inset zoom
+|       |   |-- ae_over_time_hist.png # Relative change in MAE across test split
+|       |   |-- seasonality.png       # Monthly average MAPE over time (Train vs Test)
+|       |   |-- shap_values.png       # TreeSHAP global and participant-level feature importances
+|       |   |-- same_day_overnight_comparison.png # Subgroup performance comparison
+|       |   |-- heatmap-best-{0,1,2}.png # 4-state charging occupancy heatmaps for top vehicles
+|       |   |-- heatmap-worst-{0,1,2}.png # 4-state charging occupancy heatmaps for bottom vehicles
+|       |   |-- model_performance.csv # Benchmark performance table (All data + Per vehicle mean)
+|       |   |-- shap_global_importance.csv
+|       |   |-- shap_vehicle_importance.csv
+|       |   |-- same_day_overnight_metrics.csv
+|       |-- energy/
+|           |-- evaluation_summary.md # Comprehensive Stage 3 energy evaluation report
+|           |-- performance.png
+|           |-- best_model.png
+|           |-- performance_over_features.png
+|           |-- model_agreement.png
+|           |-- ae_over_time_hist.png
+|           |-- seasonality.png
+|           |-- shap_values.png
+|           |-- same_day_overnight_comparison.png
+|           |-- model_performance.csv
+|           |-- shap_global_importance.csv
+|           |-- shap_vehicle_importance.csv
+|           |-- same_day_overnight_metrics.csv
 |
 |-- scripts/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
 |   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
 |   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
 |   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
+|   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
 |   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
@@ -73,6 +105,14 @@ Tarang/
 |       |   |-- models.py            # Benchmark regressors (LR, QR, HGB) and baselines (Mean, Median, LastValue)
 |       |   |-- metrics.py           # Reference-aligned evaluation metrics and error distribution statistics
 |       |   |-- experiment.py        # Chronological split, training, evaluation, and artifact persistence
+|       |-- evaluation/              # Stage 3 evaluation, TreeSHAP, and behavioral analysis
+|       |   |-- __init__.py
+|       |   |-- loading.py           # MultiIndex performance, predictions, and model loader
+|       |   |-- analysis.py          # Performance tables, user characteristics, model agreement, seasonality
+|       |   |-- explainability.py    # TreeSHAP feature importance (global and vehicle distributions)
+|       |   |-- subgroup_analysis.py # Same-day vs overnight session partitioning and modeling
+|       |   |-- visualizations.py    # Publication-ready Matplotlib figures matching reference styling
+|       |   |-- reporting.py         # Dynamic Markdown evaluation report generator
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -250,7 +290,24 @@ Generated modeling artifacts stored in `data/processed/electric_nation/modeling/
   - `performance.csv`: 3-level MultiIndex performance matrix for energy consumption.
   - `predictions.csv`: Canonical session records and energy predictions.
 
-### 5. Run Test Suite
+### 5. Run Model Evaluation, Behavioral Analysis & Explainability
+Executes the complete Stage 3 evaluation suite for both prediction targets (`Duration` and `ConsumedkWh`):
+
+```bash
+# Evaluate both targets
+python scripts/run_evaluation.py
+
+# Or evaluate a specific target
+python scripts/run_evaluation.py --target Duration
+python scripts/run_evaluation.py --target ConsumedkWh
+```
+
+Generated evaluation artifacts under `reports/modeling/{duration,energy}/`:
+- `evaluation_summary.md`: Publication-ready evaluation summary covering benchmark rankings, behavioral regressions, model agreement, temporal stability, TreeSHAP importance, and subgroup analysis.
+- Visual figures (300 DPI): `performance.png`, `best_model.png`, `performance_over_features.png`, `model_agreement.png`, `ae_over_time_hist.png`, `seasonality.png`, `shap_values.png`, `same_day_overnight_comparison.png` (plus 6 charging occupancy heatmaps for duration).
+- Quantitative CSV tables: `model_performance.csv`, `shap_global_importance.csv`, `shap_vehicle_importance.csv`, `same_day_overnight_metrics.csv`.
+
+### 6. Run Test Suite
 Run the full test suite including unit tests and integration tests:
 
 ```bash
