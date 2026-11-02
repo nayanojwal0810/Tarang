@@ -42,7 +42,7 @@ To predict a new session, provide:
 - Vehicle battery capacity in kWh.
 - Completed charging history for the participant.
 
-The history file must contain StartTime, StopTime, and ConsumedkWh. TARANG uses completed earlier sessions to calculate the history features. It rejects empty history, invalid timestamps, overlapping sessions, missing required values, and invalid inputs instead of filling them with assumed values.
+The history file must contain StartTime, StopTime, and ConsumedkWh. TARANG parses the timestamps as UTC and rejects sessions where StopTime comes before StartTime. It uses the latest session that started before the new arrival. That session must have ended before the new arrival and must have a finite ConsumedkWh value. TARANG does not fill missing values with assumptions.
 
 Example:
 
