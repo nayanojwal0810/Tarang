@@ -13,7 +13,8 @@ tarang/
 |-- data/
 |   |-- raw/
 |   |   |-- electric_nation/       # Raw trial Excel workbooks (excluded from Git)
-|   |-- processed/                 # Prepared datasets (generated in downstream stages)
+|   |-- processed/
+|       |-- electric_nation/       # Processed Parquet modeling datasets (excluded from Git)
 |
 |-- docs/
 |   |-- data/
@@ -28,18 +29,23 @@ tarang/
 |       |-- participant_reconciliation.csv   # Cross-dataset participant reconciliation
 |       |-- feature_feasibility.csv          # Feasibility and leakage evaluation per feature
 |
+|-- scripts/
+|   |-- prepare_modeling_data.py   # CLI pipeline to generate screened and model-ready Parquet datasets
+|
 |-- src/
 |   |-- tarang/
 |       |-- __init__.py
 |       |-- data/
 |           |-- __init__.py
 |           |-- audit.py           # Reusable audit module and report generator
+|           |-- preprocessing.py   # Screening, target construction, and feature engineering pipeline
 |
 |-- tests/
 |   |-- __init__.py
 |   |-- unit/
 |       |-- __init__.py
 |       |-- test_audit.py          # Comprehensive unit tests covering core audit logic
+|       |-- test_preprocessing.py  # Comprehensive unit tests covering preprocessing pipeline
 |
 |-- .gitignore
 |-- README.md
@@ -122,12 +128,29 @@ To execute the complete audit, generate all CSV deliverables, and dynamically co
 python src/tarang/data/audit.py
 ```
 
-### Running the Unit Test Suite
+### Preparing the Modeling Datasets
 
-Execute the unit test suite using `pytest`:
+To execute the complete preprocessing and feature engineering pipeline to generate the leakage-safe modeling datasets:
 
 ```bash
-pytest tests/unit/test_audit.py -v
+python scripts/prepare_modeling_data.py
+```
+
+Optional arguments:
+- `--raw-dir`: Directory containing the raw Excel workbooks (defaults to `data/raw/electric_nation`).
+- `--output-dir`: Destination directory for processed Parquet files and summary JSON (defaults to `data/processed/electric_nation`).
+
+**Generated Files in `data/processed/electric_nation/`**:
+1. `screened_sessions.parquet`: Intermediate post-overlap screened dataset (**60,575 rows** across **299 participants**). Preserves all raw transaction fields alongside engineered features and the `energy_gt_100kwh` review flag.
+2. `model_ready_sessions.parquet`: Final warm-start modeling dataset (**59,494 rows** across **267 participants**). Strictly restricted to 18 allowlisted columns (3 metadata columns, 13 engineered features, and 2 prediction targets), chronologically sorted by `[StartTime, TransactionID]`.
+3. `processing_summary.json`: Comprehensive audit trail and metrics summary documenting step-by-step participant attrition, session counts, feature definitions, and zero missingness verification.
+
+### Running the Unit Test Suite
+
+Execute the comprehensive unit test suite using `pytest`:
+
+```bash
+pytest tests/unit/ -v
 ```
 
 ---

@@ -638,14 +638,16 @@ def find_charging_duration_discrepancies(df_tx: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
-    """Execute participant screening according to the actual planned sequence including observation-density filtering.
+def screen_participant_sessions(
+    df_tx: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+    """Execute participant screening returning screened rows, final eligible rows, and metrics.
 
     Screening sequence:
     1. Filter valid ParticipantID and valid timestamps.
     2. Exclude Trial 3 (Trial == 3.0).
     3. Exclude sessions shorter than 5 minutes (< 5 min).
-    4. Sort chronologically per participant by [ParticipantID, StartTime, StopTime].
+    4. Sort chronologically per participant by [ParticipantID, StartTime, StopTime] (stable sort).
     5. Identify and exclude overlapping sessions (nested cummax check).
     6. Drop first session for each participant (lag unavailable).
     7. Apply minimum of 10 retained sessions AFTER dropping the first session.
@@ -658,10 +660,13 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         df_tx: Transactions DataFrame.
 
     Returns:
-        Dictionary detailing counts at each screening step and final density metrics.
+        Tuple of:
+        - df_screened: All sessions passing initial validity, Trial 3, duration, and overlap screening.
+        - df_eligible: Final warm-start modeling sessions after first-session drop, min history, and density filtering.
+        - metrics: Dictionary of screening metrics at each stage.
     """
     if df_tx.empty or "ParticipantID" not in df_tx.columns or "StartTime" not in df_tx.columns or "StopTime" not in df_tx.columns:
-        return {
+        empty_metrics = {
             "initial_valid_records": 0,
             "initial_participants": 0,
             "trial_3_excluded": 0,
@@ -690,14 +695,17 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
             "density_median_sessions_per_week": 0.0,
             "density_mean_avg_interval_days": 0.0,
         }
+        return pd.DataFrame(), pd.DataFrame(), empty_metrics
 
     # Step 1: Valid participant ID and valid timestamps
     start_utc, stop_utc, _ = parse_utc_timestamps(df_tx, "StartTime", "StopTime")
     valid_mask = df_tx["ParticipantID"].notna() & start_utc.notna() & stop_utc.notna()
 
     df_p = df_tx[valid_mask].copy()
-    df_p["_start_dt"] = start_utc.loc[df_p.index]
-    df_p["_stop_dt"] = stop_utc.loc[df_p.index]
+    df_p["StartTime"] = start_utc.loc[df_p.index]
+    df_p["StopTime"] = stop_utc.loc[df_p.index]
+    df_p["_start_dt"] = df_p["StartTime"]
+    df_p["_stop_dt"] = df_p["StopTime"]
     df_p["_dur_min"] = (df_p["_stop_dt"] - df_p["_start_dt"]).dt.total_seconds() / 60.0
 
     initial_valid = len(df_p)
@@ -715,14 +723,14 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
     df_valid_dur = df_no_t3[~short_mask].copy()
     participants_after_short = int(df_valid_dur["ParticipantID"].nunique())
 
-    # Step 4: Sort chronologically per participant
-    df_valid_dur = df_valid_dur.sort_values(["ParticipantID", "_start_dt", "_stop_dt"]).reset_index(drop=True)
+    # Step 4: Sort chronologically per participant (stable sort)
+    df_valid_dur = df_valid_dur.sort_values(["ParticipantID", "_start_dt", "_stop_dt"], kind="stable").reset_index(drop=True)
 
     # Step 5: Overlap identification via cumulative max stop time
     prev_max_stop = df_valid_dur.groupby("ParticipantID")["_stop_dt"].transform(lambda s: s.cummax().shift(1))
     overlap_mask = df_valid_dur["_start_dt"] < prev_max_stop
     screened_overlaps = int(overlap_mask.sum())
-    df_no_overlap = df_valid_dur[~overlap_mask].copy()
+    df_no_overlap = df_valid_dur[~overlap_mask].copy().reset_index(drop=True)
     participants_after_overlaps = int(df_no_overlap["ParticipantID"].nunique())
 
     # Step 6: Drop first session for each participant (lag unavailable)
@@ -742,8 +750,6 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
     sessions_before_density = len(df_before_density)
 
     # Step 8: Observation-density filtering
-    # observation_days = (latest_retained_stop - earliest_retained_start).days
-    # Exclude when retained_session_count < observation_days / 7.0
     if not df_before_density.empty:
         density_calc = df_before_density.groupby("ParticipantID").agg(
             earliest_start=("_start_dt", "min"),
@@ -758,7 +764,7 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         final_eligible_pids = density_calc[~density_calc["fails_density"]].index
 
         df_density_excluded = df_before_density[df_before_density["ParticipantID"].isin(excluded_density_pids)]
-        df_final = df_before_density[df_before_density["ParticipantID"].isin(final_eligible_pids)].copy()
+        df_final = df_before_density[df_before_density["ParticipantID"].isin(final_eligible_pids)].copy().reset_index(drop=True)
 
         participants_excluded_density = len(excluded_density_pids)
         sessions_excluded_density = len(df_density_excluded)
@@ -776,6 +782,7 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         med_spw = float(final_density["sessions_per_week"].median())
         mean_interval = float(final_density["avg_interval_days"].mean())
     else:
+        df_final = pd.DataFrame()
         participants_excluded_density = 0
         sessions_excluded_density = 0
         final_eligible_participants = 0
@@ -785,7 +792,7 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         med_spw = 0.0
         mean_interval = 0.0
 
-    return {
+    metrics = {
         "initial_valid_records": initial_valid,
         "initial_participants": initial_pids,
         "trial_3_excluded": t3_count,
@@ -814,6 +821,23 @@ def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
         "density_median_sessions_per_week": round(med_spw, 2),
         "density_mean_avg_interval_days": round(mean_interval, 2),
     }
+
+    return df_no_overlap, df_final, metrics
+
+
+def screen_participant_history(df_tx: pd.DataFrame) -> Dict[str, Any]:
+    """Execute participant screening according to the actual planned sequence including observation-density filtering.
+
+    Maintains backward compatibility by returning the screening metrics dictionary.
+
+    Args:
+        df_tx: Transactions DataFrame.
+
+    Returns:
+        Dictionary detailing counts at each screening step and final density metrics.
+    """
+    _, _, metrics = screen_participant_sessions(df_tx)
+    return metrics
 
 
 def audit_feature_feasibility(

@@ -61,6 +61,10 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
   - Readings $> 100.0$ kWh are flagged as implausibly high per the official Electric Nation trial findings.
   - Readings $> 150.0$ kWh (reaching 37,487.88 kWh) represent gross outliers.
   - Missing energy (1 record): Excluded.
+- **Baseline Modeling Treatment**:
+  - Exactly 10 sessions in the final eligible population have recorded energy $> 100.0$ kWh.
+  - In accordance with project design, these records are **retained without alteration or artificial capping** in the primary modeling target (`target_energy_kwh`) to preserve genuine empirical distribution characteristics for baseline benchmarking.
+  - In the intermediate dataset (`screened_sessions.parquet`), these sessions are explicitly flagged via `energy_gt_100kwh` (`bool`), enabling subsequent downstream sensitivity experiments, robust loss evaluation, and outlier impact benchmarking.
 
 ---
 
@@ -126,3 +130,28 @@ The modeling dataset must be constructed by executing the following planned sequ
 2. **First Session Drop (Step 6)**: Drops the first session for each of the 299 participants (299 sessions removed). Exactly one participant had only a single valid session after overlap removal, leaving that participant with zero retained sessions. Consequently, exactly **298 participants** have at least one retained session, totaling **60,276 retained sessions**.
 3. **Minimum History Threshold (Step 7)**: Of these 298 participants with retained sessions, exactly **11 participants** have fewer than 10 retained sessions (accounting for 56 sessions total). Filtering these out leaves **287 participants** and **60,220 sessions** passing into the observation-density filter. (Do not describe 12 participants as failing the minimum-history threshold; 1 participant had zero retained sessions from step 6, and 11 participants had between 1 and 9 retained sessions).
 4. **Observation-Density Filtering (Step 8)**: Excludes 20 participants (726 sessions) where $\text{retained\_sessions} < \text{observation\_days} / 7$, resulting in the final population of **267 participants** and **59,494 sessions**.
+
+---
+
+## 7. Processed Modeling Dataset Specifications
+
+The preprocessing pipeline generates two Parquet datasets and a machine-readable summary in `data/processed/electric_nation/`:
+
+### 7.1 Intermediate Screened Dataset: `screened_sessions.parquet`
+- **Scope**: All sessions surviving initial screening (Trial 3 exclusion, duration $< 5$ minutes, and chronological overlap removal).
+- **Row Count**: Exactly **60,575 rows** across **299 participants**.
+- **Contents**: All original transaction attributes preserved alongside engineered features, duration and energy targets, and the `energy_gt_100kwh` review flag.
+- **Role**: Serves as the base dataset for warm-start modeling and provides full historical sessions for future cold-start and bay-occupancy extensions.
+
+### 7.2 Final Model-Ready Dataset: `model_ready_sessions.parquet`
+- **Scope**: Final warm-start modeling population meeting minimum history and observation-density requirements.
+- **Row Count**: Exactly **59,494 rows** across **267 participants**.
+- **Sorting**: Strictly sorted chronologically by `[StartTime, TransactionID]`.
+- **Column Allowlist (18 Columns Total)**:
+  - **Metadata (3)**: `TransactionID`, `ParticipantID`, `StartTime`
+  - **Features (13)**: `weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `TimeSinceLastStop`, `sessionsToday`, `LastDuration`, `LastConsumedkWh`, `CarKW`, `CarKWh`
+  - **Targets (2)**: `target_duration_hours`, `target_energy_kwh`
+- **Strict Anti-Leakage Constraint**: Completely purges all raw transaction fields, post-plug-in event markers, and intermediate calculation columns.
+
+### 7.3 Processing Summary: `processing_summary.json`
+- Documents exact participant attrition, step-by-step row counts, outlier diagnostics, feature allowlist schemas, and missingness metrics (0 missing values across all 18 model-ready columns).

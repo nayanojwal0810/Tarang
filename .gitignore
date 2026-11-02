@@ -16,9 +16,11 @@ ENV/
 
 # Data files (raw workbooks and datasets must never be committed)
 data/raw/
+data/processed/
 *.xlsx
 *.xls
 *.csv.gz
+*.parquet
 
 # Local models and checkpoints
 *.pkl
