@@ -1,7 +1,7 @@
 # TARANG — Architecture and Project Structure
 
 **Domain**: Electric Vehicle Charging Intelligence System  
-**Current Stage**: Stage 3 — Model Evaluation, Behavioral Analysis & Explainability  
+**Current Stage**: Stage 4 — Inference  
 **Repository**: `nayanojwal0810/Tarang`
 
 ---
@@ -90,6 +90,7 @@ Tarang/
 |   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
 |   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
 |   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
+|   |-- run_inference.py             # CLI entry point: batch inference on pre-engineered feature sets
 |   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
@@ -125,6 +126,12 @@ Tarang/
 |       |   |-- subgroup_analysis.py # Same-day vs overnight session partitioning and modeling
 |       |   |-- visualizations.py    # Publication-ready Matplotlib figures matching reference styling
 |       |   |-- reporting.py         # Dynamic Markdown evaluation report generator
+|       |-- inference/               # Single-session and batch inference pipeline
+|       |   |-- __init__.py
+|       |   |-- loading.py           # Model artifact and summary loader with caching
+|       |   |-- validation.py        # Feature schema and session history validation
+|       |   |-- feature_builder.py   # Single-session 13-predictor construction from history
+|       |   |-- engine.py            # Low-latency prediction engine (predict_single, predict_batch)
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -141,9 +148,13 @@ Tarang/
 |   |   |-- test_features.py
 |   |   |-- test_eda.py
 |   |   |-- test_modeling.py
+|   |   |-- test_inference_feature_builder.py
+|   |   |-- test_inference_engine.py
 |   |-- integration/                 # End-to-end integration tests on real workbooks and datasets
 |       |-- test_data_pipeline.py
 |       |-- test_modeling_pipeline.py
+|       |-- test_evaluation_pipeline.py
+|       |-- test_inference_pipeline.py
 |
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
@@ -215,6 +226,12 @@ Tarang/
 - **`visualizations.py`**: Publication-ready Matplotlib figures matching reference styling (error boxplots, error density, OLS feature fits, model agreement with insets, temporal degradation, seasonality, SHAP summary boxplots, subgroup comparisons, and 4-state charging occupancy heatmaps).
 - **`reporting.py`**: Automated dynamic Markdown report synthesis embedding quantitative findings and figures.
 
+### 3.8 `tarang.inference`
+- **`loading.py`**: Model artifact loader with in-memory caching and schema validation; dynamic loader for Stage 1 `max_start_hour` from `processing_summary.json` without fallback.
+- **`validation.py`**: Strict 13-predictor schema validator enforcing column presence, canonical order, numeric integrity, and non-finite rejection; session input and participant history validation.
+- **`feature_builder.py`**: Single-session 13-predictor vector construction from arrival timestamp, vehicle specs, and participant history with exact holiday override, cyclical encoding, 336-hour duration capping, and cold-start rejection.
+- **`engine.py`**: Single-session and batch inference engine (`predict_single`, `predict_batch`, `InferenceEngine`) preserving row ordering and index alignment without output clipping or transformation.
+
 ---
 
 ## 4. Architecture Roadmap
@@ -244,7 +261,7 @@ flowchart TD
         Regressors --> Reports["Publication Reports &\nOccupancy Heatmaps"]
     end
 
-    subgraph Stage4["Stage 4: Inference (Planned)"]
+    subgraph Stage4["Stage 4: Inference (Completed)"]
         InferenceEngine["Batch & Single-Session\nInference Pipeline"]
     end
 
@@ -269,7 +286,7 @@ flowchart TD
 1. **Stage 1 — Foundation & Data Pipeline** (Completed): Ingestion, audit, deterministic screening, 13 features, descriptive EDA.
 2. **Stage 2 — Benchmark Predictive Modeling** (Completed): Dual-target benchmark models (LR, QR, HGBR) and baselines (Mean, Median, LastValue).
 3. **Stage 3 — Model Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
-4. **Stage 4 — Inference** (Planned): Batch and single-session prediction engine, feature schema enforcement, lag state retrieval, and low-latency inference pipelines.
+4. **Stage 4 — Inference** (Completed): Batch and single-session prediction engine, feature schema enforcement, lag state retrieval, and low-latency inference pipelines.
 5. **Stage 5 — Decision Support** (Planned): Smart charging advisory analytics, flexibility modeling ($\text{ChargingDuration} / \text{PluggedInDuration}$), demand shifting potential, and bay occupancy planning.
 6. **Stage 6 — Streamlit Application** (Planned): Interactive web dashboard for session inspection, predictive intelligence, flexibility visualization, and scenario planning.
 7. **Stage 7 — Integration, Validation & Release** (Planned): End-to-end integration testing, system-wide performance benchmarking, release packaging, and user documentation.
