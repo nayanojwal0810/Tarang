@@ -1,85 +1,138 @@
 # TARANG — EV Charging Intelligence System
 
-TARANG is an Electric Vehicle (EV) Charging Intelligence System designed to predict charging session behaviors (plugged-in duration and energy consumption) and model charging profiles to support smart grid integration and demand management.
+TARANG is an Electric Vehicle (EV) Charging Intelligence System designed to predict charging session behaviors — specifically **plugged-in duration** and **energy consumption** — and model charging flexibility to support smart charging management, grid load integration, and bay occupancy planning.
 
-This repository contains the dataset audit, formal data contracts, quality assurance suite, and data processing foundation using empirical data from the UK Electric Nation smart charging trial.
+This repository implements the complete software foundation, data ingestion and auditing pipeline, deterministic participant screening, 13-predictor feature engineering, and exploratory data analysis using empirical records from the UK Electric Nation smart charging trial.
 
 ---
 
 ## Repository Structure
 
 ```
-tarang/
+Tarang/
+|-- .github/
+|   |-- workflows/
+|       |-- ci.yml                   # Automated continuous integration test suite
+|
 |-- data/
 |   |-- raw/
-|   |   |-- electric_nation/       # Raw trial Excel workbooks (excluded from Git)
+|   |   |-- electric_nation/         # Source trial Excel workbooks (excluded from Git)
 |   |-- processed/
-|       |-- electric_nation/       # Processed Parquet modeling datasets (excluded from Git)
+|       |-- electric_nation/         # Canonical Parquet datasets and summary JSON (excluded from Git)
 |
 |-- docs/
+|   |-- architecture/
+|   |   |-- project_structure.md     # Architectural design and module responsibilities
 |   |-- data/
-|       |-- data_dictionary.md     # Source column descriptions, units, and data types
-|       |-- data_contract.md       # Input schemas, targets, timestamps, and anti-leakage rules
+|       |-- data_contract.md         # Data contracts, anti-leakage rules, and screening specifications
+|       |-- data_dictionary.md       # Raw and canonical column definitions, units, and ranges
 |
 |-- reports/
 |   |-- data_audit/
-|       |-- dataset_audit_report.md          # Comprehensive data audit report (dynamically generated)
-|       |-- transaction_quality_summary.csv  # Record counts and percentages for quality checks
-|       |-- metadata_quality_summary.csv     # Metadata quality and coverage summary
-|       |-- participant_reconciliation.csv   # Cross-dataset participant reconciliation
-|       |-- feature_feasibility.csv          # Feasibility and leakage evaluation per feature
+|   |   |-- dataset_audit_report.md  # Comprehensive data quality and feasibility audit report
+|   |   |-- transaction_quality_summary.csv
+|   |   |-- metadata_quality_summary.csv
+|   |   |-- participant_reconciliation.csv
+|   |   |-- feature_feasibility.csv
+|   |-- eda/
+|       |-- eda_summary.md           # Descriptive EDA findings and flexibility analysis
+|       |-- data_availability.png    # 4-panel participant availability distributions
+|       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour
+|       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour
+|       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
 |
 |-- scripts/
-|   |-- prepare_modeling_data.py   # CLI pipeline to generate screened and model-ready Parquet datasets
+|   |-- run_data_audit.py            # CLI entry point: run data quality audit
+|   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
+|   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
+|   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
 |   |-- tarang/
 |       |-- __init__.py
-|       |-- data/
+|       |-- config.py                # Single source of truth for paths, schemas, and parameters
+|       |-- data/                    # Ingestion, validation, auditing, and screening
+|       |   |-- __init__.py
+|       |   |-- loading.py           # Robust Excel/Parquet loading with validation
+|       |   |-- validation.py        # Schema validation and timestamp verification
+|       |   |-- quality_audit.py     # Quality auditing (overlaps, missingness, reconciliation)
+|       |   |-- screening.py         # Exact research-grade participant screening pipeline
+|       |   |-- preparation.py       # High-level pipeline orchestration and parquet persistence
+|       |   |-- audit_reporting.py   # Dynamic Markdown and CSV audit report generator
+|       |   |-- audit.py             # Re-export facade maintaining legacy compatibility
+|       |   |-- preprocessing.py     # Re-export facade maintaining legacy compatibility
+|       |-- features/                # Feature engineering modules
+|       |   |-- __init__.py
+|       |   |-- calendar_features.py # UK Bank Holidays, weekend/weekday override, day indicators
+|       |   |-- time_features.py     # StartHour, StartHourNorm, cyclical StartCos / StartSin
+|       |   |-- historical_features.py # TimeSinceLastStop, sessionsToday, LastDuration, LastConsumedkWh
+|       |   |-- feature_engineering.py # Authoritative 13 feature definitions and extraction
+|       |-- analysis/                # Statistical analysis and EDA
+|       |   |-- __init__.py
+|       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
+|       |-- visualization/           # Visualization generators
 |           |-- __init__.py
-|           |-- audit.py           # Reusable audit module and report generator
-|           |-- preprocessing.py   # Screening, target construction, and feature engineering pipeline
+|           |-- eda_plots.py         # Multi-panel Matplotlib figures with marginal distributions
 |
 |-- tests/
 |   |-- __init__.py
-|   |-- unit/
-|       |-- __init__.py
-|       |-- test_audit.py          # Comprehensive unit tests covering core audit logic
-|       |-- test_preprocessing.py  # Comprehensive unit tests covering preprocessing pipeline
+|   |-- unit/                        # Fast, isolated unit test suite (54 tests)
+|   |   |-- test_audit.py
+|   |   |-- test_loading.py
+|   |   |-- test_screening.py
+|   |   |-- test_features.py
+|   |   |-- test_eda.py
+|   |-- integration/                 # End-to-end integration tests on real workbooks (2 tests)
+|       |-- test_data_pipeline.py
 |
 |-- .gitignore
+|-- pyproject.toml                   # Modern PEP 517/621 package build configuration
+|-- pytest.ini                       # Test runner configuration
+|-- requirements.txt                 # Pinned dependencies
 |-- README.md
-|-- requirements.txt
 ```
 
 ---
 
-## Dataset Audit Summary
+## Dataset Screening and Modeling Cohort
 
-The initial dataset audit evaluated two primary raw workbooks from the Electric Nation trial:
-1. `CrowdCharge Transactions.xlsx` (11.14 MB, 71,264 records, 28 columns)
-2. `ChargerInstall.xlsx` (58.98 KB, 673 records, 10 columns)
+The TARANG data pipeline ingests raw smart charging records from the UK Electric Nation trial and executes a deterministic, multi-stage screening sequence:
 
-### Key Audit Findings
+| Screening Stage | Participants | Sessions | Impact Description |
+| :--- | :---: | :---: | :--- |
+| **Raw Ingestion** | 300 | 71,264 | Initial trial transactions |
+| **Trial 3 Exclusion** | 300 | 65,141 | Exclude Trial 3 records (`Trial != 3`) |
+| **Duration Filtering** | 299 | 64,630 | Remove micro-sessions ($< 5$ minutes) |
+| **Negative-Gap Filtering** | 299 | 60,601 | Remove 132 sessions with `TimeSinceLastStop < 0` |
+| **First Session Removal** | 298 | 60,302 | Drop first session per participant (299 dropped; 1 user has 0 left) |
+| **Minimum History Filter** | 287 | 60,246 | Exclude participants with $< 10$ retained sessions (12 excluded, 56 sessions) |
+| **Observation-Density Filter** | **267** | **59,520** | Exclude participants where $\text{sessions} < \text{span} / 7.0$ (20 excluded, 726 sessions) |
 
-- **Timestamp Standard**: All raw timestamps are verified and treated as **UTC-aware timestamps** without shifting recorded clock values.
-- **Record Completeness**: 71,264 transactions spanning March 2017 to January 2019 UTC (22 months). 100% unique primary keys (`TransactionID`).
-- **Participant Concordance**: 300 non-null participants in transactions. All 300 match the metadata registry with 100% agreement on vehicle specifications (`CarKW` and `CarKWh`) across all 67,365 matched rows.
-- **Data Integrity**: 0 negative timestamp intervals (`StopTime < StartTime`), 0 duplicate complete rows.
-- **Unattributed Sessions**: 3,899 sessions lack `ParticipantID`. Natural-session matching on `(ChargerID, StartTime, StopTime, ConsumedkWh)` confirms 3,774 records match known participant sessions on the four session fields; other transaction fields may differ. An additional 125 records belong to an unregistered charger (`4441003917`).
-- **Participant Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering 27 nested overlaps missed by sequential shift checks).
-- **Energy Quality**:
-  - 1 record with missing energy.
-  - 0 records with negative or zero energy.
-  - 20 records exceed the official Electric Nation 100 kWh plausibility threshold.
-  - 12 records exceed 150 kWh (reaching 37,487.88 kWh).
-  - 1,788 records exceed their vehicle's rated battery capacity (documented as records requiring review; exceeding battery capacity does not automatically invalidate a transaction).
-- **Planned Modeling Scope**:
-  - Dual prediction targets: Plugged-in duration in hours (capped at 336.0 hours for the target, preserving original `StopTime`) and Energy consumption in kWh.
-  - Exactly 13 planned features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `TimeSinceLastStop`, `sessionsToday`, `LastDuration`, `LastConsumedkWh`, `CarKW`, `CarKWh`).
-  - Participant screening applies Trial 3 exclusion, duration filtering ($\ge 5$ min), cumulative overlap removal, dropping initial unlagged sessions, minimum history of 10 retained sessions (287 participants, 60,220 sessions), and observation-density filtering ($\text{retained\_sessions} \ge \text{observation\_days} / 7$), yielding a final eligible modeling population of **267 participants** and **59,494 sessions**.
+The final eligible population consists of exactly **267 participants** and **59,520 sessions**.
 
-Detailed audit results and recommendations are documented in [`reports/data_audit/dataset_audit_report.md`](reports/data_audit/dataset_audit_report.md).
+### Authoritative 13 Features
+
+All predictors are strictly evaluated at arrival time $t_0 = \text{StartTime}$:
+1. `weekday`: Day-of-week index (0 = Monday .. 6 = Sunday; 0 on Bank Holidays)
+2. `weekend`: Binary flag (1 if Saturday, Sunday, or statutory UK Bank Holiday, else 0)
+3. `holiday`: Binary flag for UK England & Wales statutory Bank Holidays (13 across 2017–2018)
+4. `month`: Calendar month index (1..12)
+5. `StartCos`: Cyclical cosine coordinate $\cos(2\pi \cdot \text{StartHour} / 24)$
+6. `StartSin`: Cyclical sine coordinate $\sin(2\pi \cdot \text{StartHour} / 24)$
+7. `StartHourNorm`: Continuous arrival hour normalized by dataset-wide maximum $\text{StartHour} / \max(\text{StartHour})$
+8. `TimeSinceLastStop`: Elapsed hours since immediately preceding session stop time
+9. `sessionsToday`: Daily cumulative count of prior sessions on the same calendar date
+10. `LastDuration`: Elapsed duration in hours of immediately preceding session
+11. `LastConsumedkWh`: Active energy consumption in kWh of immediately preceding session
+12. `CarKW`: Vehicle onboard charger maximum power rating (3.6 kW or 7.0 kW)
+13. `CarKWh`: Vehicle battery capacity (6.2 kWh to 100.0 kWh)
+
+### Canonical Processed Dataset
+
+The pipeline produces a single canonical Parquet dataset:
+- **Location**: `data/processed/electric_nation/features.parquet`
+- **Dimensions**: Exactly **59,520 rows $\times$ 30 columns**
+- **Contents**: 9 selected raw source fields, `Duration` (capped at 336.0h), 7 day indicators (`Mon`..`Sun`), 4 calendar features, 4 start-hour features, 4 historical lag features, and integer participant `id`.
 
 ---
 
@@ -88,74 +141,79 @@ Detailed audit results and recommendations are documented in [`reports/data_audi
 ### Prerequisites
 
 - Python 3.10+ (tested on Python 3.13)
-- CPU-only execution (no GPU required)
+- Windows, macOS, or Linux
 
 ### Installation
 
-Clone the repository and install dependencies:
+Clone the repository and install the package in editable mode:
 
 ```bash
 git clone https://github.com/nayanojwal0810/Tarang.git
 cd Tarang
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Raw Data Setup
 
-The TARANG dataset audit relies on empirical smart charging records from the UK **Electric Nation** trial (funded by Western Power Distribution / National Grid Electricity Distribution and delivered by EA Technology and DriveElectric).
+Place the official Electric Nation trial workbooks in `data/raw/electric_nation/`:
+- `CrowdCharge Transactions.xlsx` (Sheet: `Transaction Data`)
+- `ChargerInstall.xlsx` (Sheet: `20181126_ChargerInstall_DriveEl`)
 
-Before running the audit, both workbooks must be downloaded from the official repository and placed in the project raw directory:
+*Note: Raw trial workbooks and generated Parquet datasets are excluded from Git via `.gitignore`.*
 
-- **Official Electric Nation dataset page**: https://commercial.nationalgrid.co.uk/electric-nation-data
-- **Crowd Charge Transactions workbook**: https://commercial.nationalgrid.co.uk/downloads-view/81646
-- **Charger Install workbook**: https://commercial.nationalgrid.co.uk/downloads/81655/chargerinstall.xlsx
+---
 
-**Target Directory**: `data/raw/electric_nation/`
+## Execution Instructions
 
-**Required Workbooks & Sheets**:
-1. `CrowdCharge Transactions.xlsx` — `Transaction Data` (71,264 rows $\times$ 28 columns)
-2. `ChargerInstall.xlsx` — `20181126_ChargerInstall_DriveEl` (673 rows $\times$ 10 columns)
-
-Both workbooks must be downloaded and placed in `data/raw/electric_nation/` before running the audit.
-
-> **Note**: The raw Excel workbooks contain participant-level trial records and are excluded from Git version control via `.gitignore`. Do not commit raw workbooks to the repository.
-
-### Running the Data Audit
-
-To execute the complete audit, generate all CSV deliverables, and dynamically compile the Markdown report:
+### 1. Run Data Quality Audit
+Generates comprehensive audit metrics, CSV summaries, and dynamic Markdown report in `reports/data_audit/`:
 
 ```bash
-python src/tarang/data/audit.py
+python scripts/run_data_audit.py
 ```
 
-### Preparing the Modeling Datasets
-
-To execute the complete preprocessing and feature engineering pipeline to generate the leakage-safe modeling datasets:
+### 2. Prepare Canonical Modeling Dataset
+Executes deterministic screening and 13-feature engineering, producing `features.parquet` (59,520 sessions) and `processing_summary.json`:
 
 ```bash
-python scripts/prepare_modeling_data.py
+python scripts/prepare_data.py
 ```
 
-Optional arguments:
-- `--raw-dir`: Directory containing the raw Excel workbooks (defaults to `data/raw/electric_nation`).
-- `--output-dir`: Destination directory for processed Parquet files and summary JSON (defaults to `data/processed/electric_nation`).
-
-**Generated Files in `data/processed/electric_nation/`**:
-1. `screened_sessions.parquet`: Intermediate post-overlap screened dataset (**60,575 rows** across **299 participants**). Preserves all raw transaction fields alongside engineered features and the `energy_gt_100kwh` review flag.
-2. `model_ready_sessions.parquet`: Final warm-start modeling dataset (**59,494 rows** across **267 participants**). Strictly restricted to 18 allowlisted columns (3 metadata columns, 13 engineered features, and 2 prediction targets), chronologically sorted by `[StartTime, TransactionID]`.
-3. `processing_summary.json`: Comprehensive audit trail and metrics summary documenting step-by-step participant attrition, session counts, feature definitions, and zero missingness verification.
-
-### Running the Unit Test Suite
-
-Execute the comprehensive unit test suite using `pytest`:
+### 3. Run Exploratory Data Analysis (EDA)
+Generates empirical summary statistics and publication-grade visualization figures in `reports/eda/`:
 
 ```bash
-pytest tests/unit/ -v
+python scripts/run_eda.py
+```
+
+Generated EDA artifacts:
+- `reports/eda/eda_summary.md`: Summary report including participant availability and charging flexibility ratios.
+- `reports/eda/data_availability.png`: 4-panel distribution of participant spans, sessions, weekly cadence, and durations.
+- `reports/eda/duration_by_start_hour.png`: 2D joint histogram of plugged-in duration vs. arrival hour (log scale).
+- `reports/eda/energy_by_start_hour.png`: 2D joint histogram of energy consumption vs. arrival hour (log scale).
+- `reports/eda/charging_flexibility.png`: Density distributions of flexibility ratios for same-day vs. overnight sessions.
+
+### 4. Run Test Suite
+Run the full 56-test test suite (54 unit tests and 2 integration tests):
+
+```bash
+python -m pytest tests/ -v
 ```
 
 ---
 
-## Data Contracts and Guidelines
+## Documentation
 
-- Refer to [`docs/data/data_contract.md`](docs/data/data_contract.md) for input specifications, target definitions, timestamp conventions, and strict anti-leakage rules.
-- Refer to [`docs/data/data_dictionary.md`](docs/data/data_dictionary.md) for comprehensive column descriptions, observed ranges, and units.
+- [`docs/architecture/project_structure.md`](docs/architecture/project_structure.md): Modular architecture, responsibilities, and future stage roadmap.
+- [`docs/data/data_contract.md`](docs/data/data_contract.md): Formal data schemas, anti-leakage constraints, and screening sequence.
+- [`docs/data/data_dictionary.md`](docs/data/data_dictionary.md): Column definitions, types, units, and ranges across raw and processed datasets.
+- [`reports/data_audit/dataset_audit_report.md`](reports/data_audit/dataset_audit_report.md): Full dataset quality audit and feasibility report.
+- [`reports/eda/eda_summary.md`](reports/eda/eda_summary.md): Statistical findings and flexibility ratios.
+
+---
+
+## References
+
+1. Kreft, M., Brudermueller, T., Fleisch, E., & Staake, T. (2024). Predictability of electric vehicle charging: Explaining extensive user behaviour with simple models. *Nature Communications*, 15(1), 1603. https://doi.org/10.1038/s41467-024-45899-7
+2. Electric Nation Trial Dataset: National Grid Electricity Distribution & EA Technology. https://commercial.nationalgrid.co.uk/electric-nation-data
+3. Reference Implementation: https://github.com/mkreft/predictability-of-ev-charging

@@ -26,7 +26,7 @@ A complete, evidence-based data audit was performed on the raw Electric Nation d
 - **Participant Session Overlaps**: 160 overlapping sessions detected using the cumulative maximum stop time of all earlier sessions for that participant (uncovering 27 nested overlaps missed by sequential shift checks).
 - **Energy Quality**: 20 records exceed the official Electric Nation 100 kWh implausibility threshold (12 exceed 150 kWh, reaching 37,487.88 kWh), and 1,788 records exceed their vehicle's rated battery capacity. 1 record lacks a meter reading.
 - **Charging Duration Discrepancy**: 1 record (Transaction ID: 132725) exhibits `ChargingDuration` exceeding plugged-in connection duration. This is documented as an unexplained logging discrepancy requiring investigation.
-- **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, cumulative overlap removal, initial session drop, $\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **267 participants** and **59,494 sessions**.
+- **Final Modeling Population**: Following the complete planned screening sequence (Trial 3 exclusion, duration threshold, overlap removal, initial session drop, $\ge 10$ retained sessions, and the observation-density filter), the final retained modeling population comprises **267 participants** and **59,520 sessions**.
 
 ---
 
@@ -48,7 +48,6 @@ Both workbooks were inspected across all sheets. Original file sizes, available 
 ## 3. Timestamp Integrity and Timezone Handling
 
 ### 3.1 UTC Standardization
-
 Raw timestamps in Electric Nation are supplied in UTC. The audit implements the following robust handling:
 - Naive Excel timestamps are parsed and converted to UTC-aware timestamps without shifting recorded clock values.
 - All derived temporal features (`weekday`, `weekend`, `holiday`, `month`, `StartCos`, `StartSin`, `StartHourNorm`, `sessionsToday`, and `TimeSinceLastStop`) are calculated strictly on this UTC time basis.
@@ -117,11 +116,11 @@ Energy consumption readings (`ConsumedkWh`) were evaluated against physical thre
 
 | Metric | Record Count | % of Transactions | Assessment |
 | :--- | :--- | :--- | :--- |
-| Missing Energy | 1 | 0.0014% | 1 record lacks a meter reading |
-| Non-Positive Energy (`<= 0`) | 0 | 0.0000% | No non-positive readings found (all recorded values are positive, min 0.01 kWh) |
-| Energy > 100 kWh | 20 | 0.0281% | Exceeds official Electric Nation plausibility threshold |
-| Energy > 150 kWh | 12 | 0.0168% | Severe outliers reaching 37,487.88 kWh |
-| Energy > Registered `CarKWh` | 1,788 | 2.6542% | Records requiring review (requires investigation into telemetry or multi-cycle sessions) |
+| Missing Energy | 1 | 0.0000% | 1 record lacks a meter reading |
+| Non-Positive Energy (`<= 0`) | 0 | 0.0000% | No non-positive readings found (all recorded values are positive) |
+| Energy > 100 kWh | 20 | 0.0300% | Exceeds official Electric Nation plausibility threshold |
+| Energy > 150 kWh | 12 | 0.0200% | Severe outliers reaching 37,487.88 kWh |
+| Energy > Registered `CarKWh` | 1,788 | 2.6500% | Records requiring review (requires investigation into telemetry or multi-cycle sessions) |
 
 ---
 
@@ -135,26 +134,26 @@ The planned modeling population screening was executed in strict order:
 | 2 | Exclude Trial 3 | `Trial != 3.0` | 300 | 61,242 |
 | 3 | Duration Filter | `dur_min >= 5.0` | 299 | 60,733 |
 | 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | 299 | 60,733 |
-| 5 | Overlap Removal | Remove sessions where $\text{StartTime} < \max(\text{StopTime})$ | 299 | 60,575 |
-| 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,276 |
-| 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,220 |
-| 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | **267** | **59,494** |
+| 5 | Overlap Removal | Remove negative-gap overlap records | 299 | 60,601 |
+| 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,302 |
+| 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,246 |
+| 8 | Observation-Density Filter | Retain participants where $\text{retained\_sessions} \ge \text{observation\_days} / 7$ | **267** | **59,520** |
 
 ### Screening Transition Details
-- **Step 5 (Overlap Removal)**: Yields 299 participants and 60,575 sessions.
-- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant after overlap removal). 1 participant had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,276 retained sessions**.
-- **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **11 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,220 sessions) pass the minimum-history threshold.
-- **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,494 sessions**.
+- **Step 5 (Overlap Removal)**: Yields 299 participants and 60,601 sessions.
+- **Step 6 (Lag Initialization / Dropping First Session)**: Removes 299 sessions (one first session per participant). 1 participant had only a single session, leaving 0 retained sessions. This leaves **298 participants** with at least 1 retained session, totaling **60,302 retained sessions**.
+- **Step 7 (Minimum History Filter)**: Of these 298 participants, exactly **12 participants** have fewer than 10 retained sessions (accounting for 56 sessions). The remaining **287 participants** (60,246 sessions) pass the minimum-history threshold.
+- **Step 8 (Observation-Density Filter)**: Excludes 20 participants (726 sessions) whose retained session count is below $\text{observation\_days} / 7$, yielding the final population of **267 participants** and **59,520 sessions**.
 
 ### Observation-Density Results
-- **Before Density Filtering**: 287 participants, 60,220 sessions.
+- **Before Density Filtering**: 287 participants, 60,246 sessions.
 - **Excluded by Density Rule**: 20 participants, 726 sessions.
-- **After Density Filtering**: **267 participants**, **59,494 sessions**.
+- **After Density Filtering**: **267 participants**, **59,520 sessions**.
 - **Final Population Density Metrics (267 vehicles)**:
   - Mean observation period: 374.88 days.
   - Mean sessions per week: 4.2 sessions/week.
   - Median sessions per week: 3.8 sessions/week.
-  - Mean average interval between sessions: 2.44 days.
+  - Mean average interval between sessions: 2.43 days.
 
 ---
 
@@ -193,5 +192,4 @@ The raw datasets **successfully pass the feasibility audit** for building the TA
 - 100.0% metadata concordance across all 300 active trial participants.
 - The dual prediction targets (plugged-in duration capped at 336 hours and energy consumption) can be constructed reliably.
 - All 13 planned features are feasible without target leakage.
-- Data-cleaning rules must eliminate zero-duration sessions (92), extreme duration outliers, energy outliers (> 100 kWh, 20), overlapping records (160), and unattributed records (3,899).
-- Participant screening yields a robust population of **267 participants** and **59,494 sessions**.
+- Participant screening yields a robust population of **267 participants** and **59,520 sessions**.

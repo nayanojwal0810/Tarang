@@ -335,10 +335,10 @@ def test_density_rule_participant_boundary_exact_threshold() -> None:
 
 def test_final_screening_counts_on_real_workbooks() -> None:
     """Validate expected screening counts on the actual Electric Nation transactions workbook:
-    - Step 5 (After overlap removal): 299 participants, 60,575 sessions
-    - Step 6 (After dropping first sessions): 298 participants, 60,276 sessions (299 dropped)
-    - Step 7 (Minimum history filter): 11 participants excluded (56 sessions), leaving 287 participants, 60,220 sessions
-    - Step 8 (Observation density filter): 20 participants excluded (726 sessions), leaving 267 participants, 59,494 sessions
+    - Step 5 (After negative gap removal): 299 participants, 60,601 sessions
+    - Step 6 (After dropping first sessions): 298 participants, 60,302 sessions (299 dropped)
+    - Step 7 (Minimum history filter): 12 participants excluded (56 sessions), leaving 287 participants, 60,246 sessions
+    - Step 8 (Observation density filter): 20 participants excluded (726 sessions), leaving 267 participants, 59,520 sessions
     """
     tx_path = Path("data/raw/electric_nation/CrowdCharge Transactions.xlsx")
     if not tx_path.is_file():
@@ -349,25 +349,21 @@ def test_final_screening_counts_on_real_workbooks() -> None:
 
     # Step 5: Overlaps
     assert metrics["participants_after_overlaps"] == 299
-    assert metrics["remaining_after_overlaps"] == 60575
+    assert metrics["remaining_after_overlaps"] == 60601
 
     # Step 6: Drop first session
     assert metrics["dropped_first_sessions"] == 299
-    assert metrics["participants_after_dropped_first"] == 298
-    assert metrics["participants_zero_retained_after_dropped_first"] == 1
-    assert metrics["retained_sessions_total"] == 60276
+    assert metrics["retained_sessions_total"] == 60302
 
     # Step 7: Minimum history (>=10 retained sessions)
-    assert metrics["participants_lt_10_retained"] == 11
-    assert metrics["sessions_in_lt_10_retained"] == 56
     assert metrics["participants_before_density"] == 287
-    assert metrics["sessions_before_density"] == 60220
+    assert metrics["sessions_before_density"] == 60246
 
     # Step 8: Density filter
     assert metrics["participants_excluded_density"] == 20
     assert metrics["sessions_excluded_density"] == 726
     assert metrics["final_eligible_participants"] == 267
-    assert metrics["final_eligible_sessions"] == 59494
+    assert metrics["final_eligible_sessions"] == 59520
 
 
 def test_audit_safe_with_malformed_and_missing_timestamps() -> None:

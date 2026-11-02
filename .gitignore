@@ -14,8 +14,9 @@ venv/
 env/
 ENV/
 
-# Data files (raw workbooks and datasets must never be committed)
+# Data files (raw workbooks and processed datasets must never be committed)
 data/raw/
+data/interim/
 data/processed/
 *.xlsx
 *.xls
@@ -35,7 +36,13 @@ Thumbs.db
 *.swp
 *.swo
 
-# Temporary files
+# Temporary and scratch files
 *.tmp
 *.temp
 scratch/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg

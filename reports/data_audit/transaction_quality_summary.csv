@@ -5,13 +5,13 @@ Duplicate Transaction IDs,0,0.0,Duplicate TransactionID values
 Duplicate Complete Rows,0,0.0,Full duplicate rows
 Unique Participant Identifiers,300,0.421,Unique non-null participants
 Unique Charger Identifiers,301,0.4224,Unique physical chargers
-Missing ParticipantID,3899,5.4712,Unattributed sessions (3774 records match known participant sessions on the four session fields; other transaction fields may differ; 125 belong to unregistered charger 4441003917)
+Missing ParticipantID,3899,5.4712,Unattributed sessions (3774 records match known participant sessions on four session fields; 125 belong to unregistered charger 4441003917)
 Missing CarKW / CarKWh,3899,5.4712,Vehicle specification missingness in transactions
-Missing ConsumedkWh,1,0.0014,Records with missing metered electrical energy (1 record)
+Missing ConsumedkWh,1,0.0,Records with missing metered electrical energy (1 record)
 ConsumedkWh <= 0,0,0.0,Zero or negative energy readings
-ConsumedkWh > 100 kWh (Implausible Threshold),20,0.0281,Official Electric Nation implausible consumption threshold
-ConsumedkWh > 150 kWh (Extreme Outliers),12,0.0168,"Extreme energy consumption outliers reaching 37,487.88 kWh"
-ConsumedkWh > Matched CarKWh,1788,2.6542,"Records requiring review (energy consumption exceeds registered nominal battery capacity; requires investigation into telemetry accuracy, battery replacements, or multiple charge cycles within a connection)"
+ConsumedkWh > 100 kWh (Implausible Threshold),20,0.03,Official Electric Nation implausible consumption threshold
+ConsumedkWh > 150 kWh (Extreme Outliers),12,0.02,"Extreme energy consumption outliers reaching 37,487.88 kWh"
+ConsumedkWh > Matched CarKWh,1788,2.65,Records requiring review (energy consumption exceeds registered nominal battery capacity)
 StopTime < StartTime (Negative Duration),0,0.0,Chronologically inverted intervals
 StopTime == StartTime (Zero Duration),92,0.1291,Instantaneous connect/disconnect glitches
 Sessions Shorter than 5 Minutes (< 5 min),561,0.7872,Micro-sessions excluded from modeling population
@@ -21,6 +21,6 @@ ChargingDuration Exceeds Plugged Duration,1,0.0014,"Unexplained logging discrepa
 Missing Hot_Unplug,19839,27.8387,Sessions without unplug status classification
 Trial 1 Sessions,28107,39.4407,Managed charging Trial 1
 Trial 2 Sessions,13000,18.242,Managed charging Trial 2
-Trial 3 Sessions,6123,8.592,Managed charging Trial 3 (to be excluded in modeling)
+Trial 3 Sessions,6123,8.592,Managed charging Trial 3 (excluded in research dataset)
 Unmanaged / Control Sessions (Trial is NaN),24034,33.7253,Unmanaged control group sessions
 Participant-Level Overlapping Sessions,160,0.2245,Sessions starting before cumulative maximum stop time of prior sessions

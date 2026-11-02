@@ -1,53 +1,71 @@
-"""Data audit and processing modules for TARANG."""
+"""TARANG data module.
 
-from tarang.data.audit import (
+Provides data loading, schema validation, quality auditing, participant screening,
+and pipeline orchestration functions.
+"""
+
+from tarang.data.audit_reporting import (
+    generate_markdown_report,
+    generate_metadata_quality_summary,
+    generate_participant_reconciliation,
+    generate_transaction_quality_summary,
+    run_full_audit,
+)
+from tarang.data.loading import (
+    inspect_workbook_metadata,
+    load_dataset,
+    load_raw_metadata,
+    load_raw_transactions,
+)
+from tarang.data.preparation import run_data_preparation
+from tarang.data.quality_audit import (
     audit_energy_quality,
     audit_feature_feasibility,
     audit_metadata_row_level,
+    calculate_missingness,
+    compute_simple_shift_overlaps,
     detect_duplicates,
     detect_session_overlaps,
-    inspect_workbook_metadata,
+    find_charging_duration_discrepancies,
     investigate_unattributed_sessions,
     parse_utc_timestamps,
-    run_full_audit,
+)
+from tarang.data.screening import (
+    screen_and_prepare_dataset,
     screen_participant_history,
     screen_participant_sessions,
 )
-from tarang.data.preprocessing import (
-    MODEL_METADATA_COLUMNS,
-    MODEL_READY_COLUMNS,
-    PROHIBITED_FEATURE_COLUMNS,
-    TARGET_COLUMNS,
-    WARM_START_FEATURES,
-    build_screened_and_model_ready_datasets,
-    engineer_features,
-    prepare_targets,
-    run_preprocessing,
-    save_processed_datasets,
-    validate_input_datasets,
+from tarang.data.validation import (
+    validate_canonical_dataset_schema,
+    validate_raw_selected_columns,
+    validate_workbook_schema,
 )
 
 __all__ = [
-    "MODEL_METADATA_COLUMNS",
-    "MODEL_READY_COLUMNS",
-    "PROHIBITED_FEATURE_COLUMNS",
-    "TARGET_COLUMNS",
-    "WARM_START_FEATURES",
-    "audit_energy_quality",
-    "audit_feature_feasibility",
-    "audit_metadata_row_level",
-    "build_screened_and_model_ready_datasets",
-    "detect_duplicates",
-    "detect_session_overlaps",
-    "engineer_features",
+    "load_dataset",
+    "load_raw_transactions",
+    "load_raw_metadata",
     "inspect_workbook_metadata",
-    "investigate_unattributed_sessions",
+    "validate_workbook_schema",
+    "validate_raw_selected_columns",
+    "validate_canonical_dataset_schema",
+    "calculate_missingness",
+    "detect_duplicates",
     "parse_utc_timestamps",
-    "prepare_targets",
-    "run_full_audit",
-    "run_preprocessing",
-    "save_processed_datasets",
-    "screen_participant_history",
+    "detect_session_overlaps",
+    "compute_simple_shift_overlaps",
+    "investigate_unattributed_sessions",
+    "audit_metadata_row_level",
+    "audit_energy_quality",
+    "find_charging_duration_discrepancies",
+    "audit_feature_feasibility",
+    "screen_and_prepare_dataset",
     "screen_participant_sessions",
-    "validate_input_datasets",
+    "screen_participant_history",
+    "run_data_preparation",
+    "generate_transaction_quality_summary",
+    "generate_metadata_quality_summary",
+    "generate_participant_reconciliation",
+    "generate_markdown_report",
+    "run_full_audit",
 ]
