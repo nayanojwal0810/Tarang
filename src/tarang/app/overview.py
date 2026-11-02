@@ -148,25 +148,25 @@ def render_overview_view() -> None:
                 <table style="width: 100%; font-size: 0.83rem; color: #475569; border-collapse: collapse;">
                     <tr style="border-bottom: 1px solid #E2E8F0;">
                         <th style="text-align: left; padding: 0.3rem 0; font-weight: 600; color: #142D43;">Target</th>
-                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">Test MAE</th>
-                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">R²</th>
-                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">vs. mean baseline</th>
+                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">HGBR MAE</th>
+                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">HGBR MdAPE</th>
+                        <th style="text-align: right; padding: 0.3rem 0; font-weight: 600; color: #142D43;">Mean Baseline</th>
                     </tr>
                     <tr style="border-bottom: 1px solid #F1F5F9;">
                         <td style="padding: 0.35rem 0;">Duration</td>
-                        <td style="text-align: right; font-weight: 600; color: #142D43;">2.96 h</td>
-                        <td style="text-align: right;">0.320</td>
-                        <td style="text-align: right; color: #047857;">−28%</td>
+                        <td style="text-align: right; font-weight: 600; color: #142D43;">5.53 h</td>
+                        <td style="text-align: right; color: #047857;">23.4%</td>
+                        <td style="text-align: right;">7.08 h</td>
                     </tr>
                     <tr>
                         <td style="padding: 0.35rem 0;">Energy</td>
-                        <td style="text-align: right; font-weight: 600; color: #142D43;">4.24 kWh</td>
-                        <td style="text-align: right;">0.354</td>
-                        <td style="text-align: right; color: #047857;">−28%</td>
+                        <td style="text-align: right; font-weight: 600; color: #142D43;">3.83 kWh</td>
+                        <td style="text-align: right; color: #047857;">25.0%</td>
+                        <td style="text-align: right;">6.91 kWh</td>
                     </tr>
                 </table>
                 <p style="font-size: 0.75rem; color: #94A3B8; margin: 0.5rem 0 0;">
-                    Test split: 20% held-out sessions. Baseline: mean predictor.
+                    Held-out test split: 11,904 sessions (20%). Baseline: mean predictor.
                 </p>
             </div>
             """,

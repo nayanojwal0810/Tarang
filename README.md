@@ -1,162 +1,173 @@
 # TARANG — EV Charging Intelligence System
 
-TARANG uses electric vehicle charging session history and vehicle hardware specifications to predict session connection duration and energy consumption. It provides real-time single-session advisories, projected unplug departure timestamps, and descriptive charging flexibility analysis across multi-session batches.
+TARANG uses electric vehicle charging history and vehicle details to predict session connection duration and energy use. It also provides session-level advisory information based on those predictions and historical charging patterns.
 
-TARANG is an informational intelligence platform. It does not control charging hardware, execute autonomous grid dispatch, or guarantee available flexibility.
+TARANG is a Python analysis and prediction pipeline. It does not control chargers, create charging schedules, or dispatch energy.
 
----
+## What it does
 
-## What It Predicts
+- Checks and prepares charging session data.
+- Summarizes charging times, duration, energy use, and participant activity.
+- Trains and compares models for duration and energy prediction.
+- Produces predictions for single sessions and batches.
+- Calculates projected unplug times and historical flexibility summaries.
+- Provides an interactive web application for single-session and batch forecasting.
 
-TARANG estimates two operational targets upon vehicle connection:
+The model predicts two targets:
 
-| Target | Description | Unit |
+| Target | Meaning | Unit |
 |---|---|---|
-| **Connection Duration** (`Duration`) | Total time the charge point remains occupied by the vehicle (including active charging and idle connected time). Capped at 336 hours in training. | Hours |
-| **Energy Consumption** (`ConsumedkWh`) | Total electrical energy transferred during the charging session. | kWh |
+| `Duration` | Time from plug-in to unplug. The training target is capped at 336 hours. | Hours |
+| `ConsumedkWh` | Energy delivered during the session. | kWh |
 
-Each prediction is generated from **13 canonical predictors** available at or before plug-in time:
+Each model uses 13 inputs available at or before plug-in time:
 
 ```python
 [
     "weekday", "weekend", "holiday", "month",
     "StartCos", "StartSin", "StartHourNorm",
     "TimeSinceLastStop", "sessionsToday",
-    "LastDuration", "LastConsumedkWh",
-    "CarKW", "CarKWh"
+    "LastDuration", "LastConsumedkWh", "CarKW", "CarKWh"
 ]
 ```
 
-Combining the predicted connection duration with the arrival timestamp produces a **projected unplug departure time** in UTC.
-
----
-
-## Architecture & Workflow
+## Project design
 
 ```text
-Electric Nation Trial Data (NGED Open Data)
-                    ↓
-Data Quality Screening & Feature Engineering (13 Predictors)
-                    ↓
-HistGradientBoostingRegressor Training (Absolute Error Loss)
-                    ↓
-Deployment Artifact Bundle (Versioned Models & Normalization Metadata)
-                    ↓
-┌───────────────────────────────────────┬───────────────────────────────────────┐
-│     Single-Session Advisory           │        Batch Network Advisory         │
-│  Arrival UTC + Car kW/kWh + History   │      CSV / Parquet Fleet Records      │
-│                  ↓                    │                   ↓                   │
-│  Real-time Duration, Energy, Unplug   │  Fleet Summary, Distribution Metrics, │
-│  Forecasts & 13 Predictor Inspection  │  CSV Export & Flexibility Analysis    │
-└───────────────────────────────────────┴───────────────────────────────────────┘
+Electric Nation Data
+        ↓
+Data Audit & Preparation
+        ↓
+EDA & Feature Engineering (13 inputs)
+        ↓
+Model Training & Evaluation
+        ↓
+Saved Models
+        ↓
+Session Input + Charging History
+        ↓
+Inference: Duration & Energy Predictions
+        ↓
+Decision Support & Interactive Streamlit Web Application
 ```
 
----
+## Model comparison
 
-## Model Benchmark Performance
+The table shows results on the later 20% of the data (11,904 test sessions). Lower values indicate smaller errors.
 
-Evaluation on 20% held-out test sessions (11,904 sessions) against baseline statistical estimators:
+| Model | Duration MAE (h) | Duration MdAPE (%) | Energy MAE (kWh) | Energy MdAPE (%) |
+|---|---:|---:|---:|---:|
+| LinearRegression | 6.45 | 34.5 | 4.44 | 32.5 |
+| QuantileRegressor | 6.08 | 31.3 | 4.34 | 31.6 |
+| HistGradientBoostingRegressor | 5.53 | 23.4 | 3.83 | 25.0 |
+| MedianValue | 7.08 | 36.0 | 6.00 | 49.3 |
+| MeanValue | 7.08 | 34.5 | 6.91 | 64.4 |
+| LastValue | 8.93 | 57.1 | 5.10 | 37.2 |
 
-| Target | Model | Test MAE | Test MdAPE | R² | vs. Mean Baseline |
-|---|---|---:|---:|---:|---:|
-| **Duration** | **HistGradientBoostingRegressor** | **2.96 h** | **23.4%** | **0.320** | **−28%** |
-| | LinearRegression | 6.45 h | 34.5% | 0.080 | −9% |
-| | QuantileRegressor | 6.08 h | 31.3% | 0.120 | −14% |
-| | Mean Baseline | 4.09 h | 34.5% | 0.000 | 0% |
-| | Median Baseline | 7.08 h | 36.0% | −0.050 | — |
-| | LastValue Baseline | 8.93 h | 57.1% | −0.210 | — |
-| **Energy** | **HistGradientBoostingRegressor** | **4.24 kWh** | **25.0%** | **0.354** | **−28%** |
-| | LinearRegression | 4.44 kWh | 32.5% | 0.280 | −24% |
-| | QuantileRegressor | 4.34 kWh | 31.6% | 0.310 | −26% |
-| | Mean Baseline | 5.86 kWh | 64.4% | 0.000 | 0% |
-| | Median Baseline | 6.00 kWh | 49.3% | −0.040 | — |
-| | LastValue Baseline | 5.10 kWh | 37.2% | −0.150 | — |
+MAE is mean absolute error. MdAPE is median absolute percentage error. HistGradientBoostingRegressor has the lowest MAE and MdAPE for both targets in this comparison. For energy, MedianValue has the lowest MAPE (236.1%); see the [energy evaluation report](reports/modeling/energy/evaluation_summary.md) for the full results and metric definitions.
 
-The production models use `HistGradientBoostingRegressor` with absolute-error loss and early stopping to handle the non-Gaussian variance observed in EV driver behaviour.
+The current processed dataset contains 59,520 sessions from 267 participants. The [reports folder](reports/) contains the data audit, exploration results, model evaluations, figures, and decision support summary.
 
----
+## Technology
 
-## Technology Stack
+- **Language:** Python 3.10+
+- **Data processing:** pandas, NumPy, PyArrow, openpyxl
+- **Machine learning and statistics:** scikit-learn, SciPy, statsmodels, SHAP
+- **Interactive web application:** Streamlit
+- **Plots:** Matplotlib, Seaborn
+- **Model files:** joblib
+- **Tests:** pytest
 
-- **Language:** Python 3.11, 3.12 (verified in CI)
-- **Data Engineering:** pandas, NumPy, PyArrow
-- **Machine Learning:** scikit-learn (`HistGradientBoostingRegressor`), SciPy, joblib
-- **Web Application:** Streamlit
-- **Quality & CI:** pytest, GitHub Actions
+## Set up
 
----
-
-## Local Installation & Execution
-
-### 1. Clone the repository
+Clone the repository and install the package:
 
 ```bash
 git clone https://github.com/nayanojwal0810/Tarang.git
 cd Tarang
+pip install -e ".[dev,app]"
 ```
 
-### 2. Install dependencies
+Alternatively, install application dependencies via:
 
-For application runtime:
 ```bash
 pip install -r requirements.txt
 ```
 
-For development and test suite:
+Place the source workbooks in `data/raw/electric_nation/` (if executing data preparation from scratch):
+
+- `CrowdCharge Transactions.xlsx` (sheet: `Transaction Data`)
+- `ChargerInstall.xlsx` (sheet: `20181126_ChargerInstall_DriveEl`)
+
+Raw workbooks and processed datasets remain excluded from version control under research data governance. Production inference model artifacts and normalization metadata required for web application deployment are packaged and tracked in `deployment_artifacts/`.
+
+## Run the workflow
+
+Run the preparation and modeling commands in order:
+
 ```bash
-pip install -e ".[dev,app]"
+python scripts/run_data_audit.py
+python scripts/prepare_data.py
+python scripts/run_eda.py
+python scripts/run_modeling.py
+python scripts/run_evaluation.py
 ```
 
-### 3. Run the interactive web application
+After training, view the inference and decision support command options:
+
+```bash
+python scripts/run_inference.py --help
+python scripts/run_decision_support.py --help
+```
+
+Launch the interactive web application:
 
 ```bash
 streamlit run app.py
 ```
 
-Open `http://localhost:8501` in your browser.
+A public web application deployment is planned at `https://tarang-ev-intelligence.streamlit.app` (pending activation by the project owner).
 
-### 4. Run automated tests
+Run the tests with:
 
 ```bash
 python -m pytest
 ```
 
+## Predictions and advisory outputs
+
+TARANG supports single-session prediction using an arrival time, vehicle details, and completed session history. It also supports batch prediction from a CSV or Parquet file containing `StartTime` and the 13 model inputs.
+
+Decision support adds these fields to batch results:
+
+- `predicted_Duration`
+- `predicted_ConsumedkWh`
+- `projected_unplug_time_utc`
+- `duration_prediction_valid`
+- `energy_prediction_valid`
+
+The projected unplug time adds the predicted duration to the arrival time. TARANG keeps the original predictions and marks estimates as invalid when they are not finite and non-negative.
+
+A historical flexibility ratio describes the share of a connection period spent charging. It does not prove that the remaining time or energy can be shifted. TARANG does not schedule vehicles, optimize tariffs, or send commands to charging hardware.
+
+## Documentation and reports
+
+- [Project structure](docs/architecture/project_structure.md)
+- [Data contract](docs/data/data_contract.md)
+- [Data dictionary](docs/data/data_dictionary.md)
+- [Inference contract](docs/inference/inference_contract.md)
+- [Decision support contract](docs/decision_support/decision_support_contract.md)
+- [Dataset audit](reports/data_audit/dataset_audit_report.md)
+- [Exploratory data analysis](reports/eda/eda_summary.md)
+- [Duration model results](reports/modeling/duration/evaluation_summary.md)
+- [Energy model results](reports/modeling/energy/evaluation_summary.md)
+- [Decision support results](reports/decision_support/decision_support_summary.md)
+
+## References and data
+
+- **Research paper:** [Kreft et al. (2024), *Predictability of electric vehicle charging: Explaining extensive user behavior-specific heterogeneity*, Applied Energy, 370, 123544](https://doi.org/10.1016/j.apenergy.2024.123544).
+- **Dataset:** [Electric Nation data — National Grid Electricity Distribution](https://commercial.nationalgrid.co.uk/electric-nation-data). The project uses the CrowdCharge transaction and Charger Install data. See the source page for access and data information.
+
 ---
 
-## Public Web Application
-
-The application is configured for deployment on **Streamlit Community Cloud**:
-
-- **Repository:** `nayanojwal0810/Tarang`
-- **Branch:** `main`
-- **Main file path:** `app.py`
-- **Python Version:** `3.12`
-- **Public URL:** [tarang-ev-intelligence.streamlit.app](https://tarang-ev-intelligence.streamlit.app)
-
-*Note: Access to the public deployment URL is subject to Streamlit Community Cloud hosting status and repository owner activation.*
-
----
-
-## Operational Boundaries & Limitations
-
-1. **Advisory Estimates:** TARANG generates statistical forecasts based on historical patterns. Predictions are informational and do not control charging equipment, modulate electrical power, or guarantee station availability.
-2. **Connection vs. Active Charging:** Connection duration includes idle plugged-in time after charging completes. A vehicle may finish battery replenishment hours before unplugging.
-3. **Cold-Start Habit Requirement:** Calculating driver habit features (`TimeSinceLastStop`, `LastDuration`, `LastConsumedkWh`) requires at least one prior completed session for the participant before the arrival timestamp.
-4. **Descriptive Flexibility:** Historical charging flexibility ratios describe observed idle time during completed sessions. They do not prove that idle duration or energy is shiftable under real-time grid or driver constraints.
-5. **Data Privacy:** Uploaded datasets are processed in active browser memory and are not logged or stored. Users should never upload confidential or personally identifiable charging records.
-
----
-
-## Dataset Reference & Attribution
-
-- **Trial Dataset:** Electric Nation Trial (2017–2018), conducted by Western Power Distribution (now National Grid Electricity Distribution / NGED) and DriveElectric.
-- **Licence:** NGED Open Data Licence.
-- **Attribution Statement:** *Supported by NGED Open Data.*
-- **Dataset Portal:** [Electric Nation Data — National Grid](https://commercial.nationalgrid.co.uk/electric-nation-data)
-- **Academic Citation:** Kreft, C., et al. (2024). *Predictability of electric vehicle charging: Explaining extensive user behavior-specific heterogeneity*. **Applied Energy**, 370, 123544. [doi:10.1016/j.apenergy.2024.123544](https://doi.org/10.1016/j.apenergy.2024.123544).
-
----
-
-## Author
-
-**A. Nayanojwal Sri Tej**
+Author: A. Nayanojwal Sri Tej

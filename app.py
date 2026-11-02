@@ -5,6 +5,15 @@ Main Streamlit Application Entry Point.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure `src` is on sys.path when running from repository root (e.g., Streamlit Cloud)
+_ROOT = Path(__file__).resolve().parent
+_SRC = _ROOT / "src"
+if _SRC.exists() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 import streamlit as st
 
 # Must be the first Streamlit call.
