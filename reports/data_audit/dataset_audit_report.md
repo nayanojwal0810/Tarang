@@ -177,7 +177,7 @@ Evaluated strictly at plug-in arrival ($t_0 = \text{StartTime}$) in UTC:
 8. `TimeSinceLastStop`: Hours elapsed since immediately preceding session `StopTime`, calculated from the immediately preceding session before negative-gap rows are removed (without subsequent gap recalculation). Historical lag.
 9. `sessionsToday`: Consecutive-date cumulative count on each participant's retained rows. Historical lag.
 10. `LastDuration`: Duration in hours of immediately preceding session. The first retained row receives the duration of the dropped preceding session (zero missingness in retained population). Historical lag.
-11. `LastConsumedkWh`: Energy consumed in kWh of immediately preceding session. The first retained row receives the energy of the dropped preceding session. Preserves a missing preceding energy value without backward searching (exactly 1 missing record in retained population). Preceding session readings above 100 kWh are retained without clipping. Historical lag.
+11. `LastConsumedkWh`: Energy consumed in kWh of immediately preceding session. The first retained row receives the energy of the dropped preceding session. Preserves a missing preceding energy value without backward searching (0 missing values in retained canonical population; the single raw missing transaction belonged to excluded Trial 3). Preceding session readings above 100 kWh are retained without clipping. Historical lag.
 12. `CarKW`: Vehicle onboard charger power rating in kW (3.6 or 7.0 kW). Static vehicle hardware specification.
 13. `CarKWh`: Usable battery capacity in kWh (4.4 to 100.0 kWh). Static vehicle hardware specification.
 

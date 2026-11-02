@@ -74,7 +74,7 @@ The 30 columns present in `data/processed/electric_nation/features.parquet` (59,
 | `StartTime` | `datetime64[ns, UTC]` | Source Field | Vehicle connection start timestamp (UTC). | `2017-03-01 21:09:00` to `2018-12-31 23:11:00` |
 | `StopTime` | `datetime64[ns, UTC]` | Source Field | Vehicle disconnection stop timestamp (UTC, unmodified). | `2017-03-02 07:11:00` to `2019-01-01 21:52:00` |
 | `ParticipantID` | `object` | Source Field | Unique trial participant identifier. | 267 distinct IDs (`ENxxxx`) |
-| `ConsumedkWh` | `float64` | Target / Source | Delivered electrical energy during charging session. Retained without filtering missing energy or values > 100 kWh. | $0.01$ to $37,487.88$ kWh; median: 7.16 kWh (1 missing value) |
+| `ConsumedkWh` | `float64` | Target / Source | Delivered electrical energy during charging session. Retained without filtering missing energy or values > 100 kWh. | $0.01$ to $37,487.88$ kWh; median: 7.16 kWh (0 missing values in canonical dataset; single raw null excluded with Trial 3) |
 | `CarKW` | `float64` | Feature / Source | Vehicle onboard charger power rating. | `3.6` or `7.0` kW |
 | `CarKWh` | `float64` | Feature / Source | Vehicle usable battery capacity. | `6.2` to `100.0` kWh |
 | `PluggedInTime` | `int64` | Source Field | Total connection duration in minutes. | Min: 5 minutes; max: 470,693 minutes |
@@ -99,7 +99,7 @@ The 30 columns present in `data/processed/electric_nation/features.parquet` (59,
 | `TimeSinceLastStop` | `float64` | Feature | Elapsed hours between immediately preceding session stop and current start. | Min: 0.0, Max: 4,816.67 hours |
 | `sessionsToday` | `int64` | Feature | Prior sessions initiated by participant on consecutive dates on or before StartTime. | $0 \le \text{sessionsToday} \le 7$ |
 | `LastDuration` | `float64` | Feature | Elapsed duration in hours of immediately preceding session. First retained session populated from dropped preceding session (zero missingness). | $[0.0833, 336.0]$ hours |
-| `LastConsumedkWh`| `float64` | Feature | Delivered energy in kWh of immediately preceding session. First retained session populated from dropped preceding session (1 missing value preserved; readings > 100 kWh retained without clipping). | $[0.01, 37,487.88]$ kWh (or missing) |
+| `LastConsumedkWh`| `float64` | Feature | Delivered energy in kWh of immediately preceding session. First retained session populated from dropped preceding session (0 missing values in canonical dataset; single raw null excluded with Trial 3; readings > 100 kWh retained without clipping). | $[0.01, 37,487.88]$ kWh |
 | `id` | `int64` | Identifier | Integer participant group enumeration index from `enumerate(groupby("ParticipantID", sort=True))`. Non-contiguous (values 1 to 298 across 267 participants). Not used as predictor. | Integer values $1 \dots 298$ |
 
 ---

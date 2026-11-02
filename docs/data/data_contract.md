@@ -33,7 +33,7 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 | `TimeSinceLastStop` | `float64` | Hours | $\ge 0.0$ | Known at $t_0$ (from prior session) | Elapsed hours between previous session `StopTime` and current `StartTime` per participant. Sessions with negative gaps removed without gap recalculation. |
 | `sessionsToday` | `int64` | Count ($\ge 0$) | Integer $\ge 0$ | Known at $t_0$ (from prior sessions) | Daily cumulative count of prior sessions initiated by the participant on consecutive dates on or before `StartTime`. |
 | `LastDuration` | `float64` | Hours | $0.0833 \le \text{LastDuration} \le 336.0$ | Known at $t_0$ (from prior session) | Elapsed duration in hours of immediately preceding session. The first retained session receives the duration of the dropped preceding session (zero missingness). |
-| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $\ge 0.01$ (unbounded above; reflects actual preceding energy including readings $> 100$ kWh; preserves nulls) | Known at $t_0$ (from prior session) | Delivered energy of immediately preceding session. The first retained session receives the energy of the dropped preceding session (readings above 100 kWh retained without clipping; missingness preserved without backward searching). |
+| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $\ge 0.01$ (unbounded above; reflects actual preceding energy including readings $> 100$ kWh; 0 nulls in canonical dataset) | Known at $t_0$ (from prior session) | Delivered energy of immediately preceding session. The first retained session receives the energy of the dropped preceding session (readings above 100 kWh retained without clipping; missingness preserved without backward searching; 0 nulls in canonical population as the single raw null belonged to excluded Trial 3). |
 | `CarKW` | `float64` | Kilowatts (kW) | $\in \{3.6, 7.0\}$ | Known prior to arrival | On-board charger maximum power rating from trial record. |
 | `CarKWh` | `float64` | Kilowatt-hours (kWh) | $4.4 \le \text{CarKWh} \le 100.0$ | Known prior to arrival | Usable battery capacity from trial record. |
 
@@ -59,7 +59,7 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 - **Audit Plausibility vs. Canonical Screening**:
   - The 100.0 kWh threshold serves strictly as a non-destructive data quality audit plausibility flag to identify anomalous readings per official trial findings.
   - **No filtering or clipping**: The canonical data preparation pipeline does **not** filter out, clip, or alter sessions with `ConsumedkWh > 100.0` kWh. All observed energy readings (including readings reaching extreme values $> 100.0$ kWh) are retained intact.
-  - **Missing energy preservation**: Missing energy values are preserved without exclusion or imputation during screening.
+  - **Missing energy preservation**: Missing energy values are preserved without exclusion or imputation during screening. In the screened canonical population, exactly 0 missing values occur because the single raw missing transaction (TransactionID 122858, ParticipantID EN1484) belonged to Trial 3 and was excluded during initial Trial 3 filtering.
 
 ---
 
@@ -124,7 +124,7 @@ The canonical research dataset is constructed through the following deterministi
 | 12 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 12 participants (56 sessions) excluded $\rightarrow$ 287 participants (60,246 sessions) |
 | 13 | Observation-Density Filter | Retain participants with $\text{sessions} \ge \text{observation\_days} / 7.0$ | 20 participants (726 sessions) excluded $\rightarrow$ **267 participants (59,520 sessions)** |
 | 14 | Integer ID Assignment | Assign integer participant identifier `id` from the source group enumeration index (`i` in `enumerate(groupby("ParticipantID", sort=True))`). IDs range from 1 to 298 across 267 participants and are non-contiguous. | Preserves source group enumeration index |
-| 15 | Lag Calculation | Assign `LastDuration` and `LastConsumedkWh` from preceding sessions in pre-drop participant history (`dfp.shift(1)[1:]`), ensuring the first retained session receives the dropped preceding session's duration and energy. Calculate `sessionsToday` via consecutive-date cumulative counts. | Lags aligned; 0 nulls in `LastDuration`, 1 null in `LastConsumedkWh` |
+| 15 | Lag Calculation | Assign `LastDuration` and `LastConsumedkWh` from preceding sessions in pre-drop participant history (`dfp.shift(1)[1:]`), ensuring the first retained session receives the dropped preceding session's duration and energy. Calculate `sessionsToday` via consecutive-date cumulative counts. | Lags aligned; 0 nulls in `LastDuration`, 0 nulls in `LastConsumedkWh` (single raw missing record belonged to Trial 3 which was excluded in Step 1) |
 | 16 | Concatenation & Sort | Global sort by `StartTime`, reset index | Final 59,520 records chronologically ordered |
 
 ---
