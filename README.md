@@ -25,6 +25,7 @@ Tarang/
 |   |-- data/data_contract.md
 |   |-- data/data_dictionary.md
 |   |-- inference/inference_contract.md
+|   |-- decision_support/decision_support_contract.md
 |
 |-- reports/                         # Research findings, audit reports, and visual assets
 |   |-- data_audit/                  # Feasibility and quality audit report and CSV summaries
@@ -32,6 +33,7 @@ Tarang/
 |   |-- modeling/                    # Stage 3 evaluation summaries, SHAP plots, and metric tables
 |       |-- duration/
 |       |-- energy/
+|   |-- decision_support/            # Stage 5 prediction and flexibility summaries and operational report
 |
 |-- scripts/                         # Canonical pipeline CLI entry points
 |   |-- run_data_audit.py            # Stage 1: Data quality and reconciliation audit
@@ -40,6 +42,7 @@ Tarang/
 |   |-- run_modeling.py              # Stage 2: Dual-target predictive modeling benchmark
 |   |-- run_evaluation.py            # Stage 3: Model evaluation, TreeSHAP, and subgroup analysis
 |   |-- run_inference.py             # Stage 4: Batch prediction on pre-engineered features
+|   |-- run_decision_support.py      # Stage 5: Session occupancy and flexibility advisory layer
 |
 |-- src/
 |   |-- tarang/
@@ -79,6 +82,11 @@ Tarang/
 |       |   |-- validation.py        # Strict 13-predictor schema and session history validation
 |       |   |-- feature_builder.py   # Single-session 13-predictor construction from history
 |       |   |-- engine.py            # Fast prediction engine (predict_single, predict_batch)
+|       |-- decision_support/        # Stage 5 session occupancy and flexibility advisory layer
+|       |   |-- __init__.py
+|       |   |-- engine.py            # DecisionSupportEngine, SessionAdvisory, validity & unplug calculation
+|       |   |-- flexibility.py       # Smart-charging flexibility analysis wrapper
+|       |   |-- reporting.py         # Summary tables and operational Markdown report generator
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -86,7 +94,7 @@ Tarang/
 |           |-- __init__.py
 |           |-- eda_plots.py         # Multi-panel Matplotlib figures with marginal distributions
 |
-|-- tests/                           # Complete pytest test suite (121 unit & integration tests)
+|-- tests/                           # Complete pytest test suite (137 unit & integration tests)
 |   |-- unit/                        # Fast, isolated unit test suite
 |   |-- integration/                 # End-to-end integration and pipeline tests
 |
@@ -330,6 +338,56 @@ print(f"Predicted Energy: {energy_kwh:.2f} kWh")
 - **Stage 1 Summary & Stage 2 Artifacts**: Start hour normalization (`StartHourNorm`) requires the dataset-wide `max_start_hour` stored in `data/processed/electric_nation/processing_summary.json` (fallback to 24.0 is disallowed). Prediction execution requires pre-trained Stage 2 `.joblib` model artifacts.
 - **Zero Prediction Post-Processing**: The inference layer returns raw continuous estimates without clipping, rounding, or artificial thresholds; advisory interpretation and flexibility modeling are handled in Stage 5.
 
+### 6. Run Decision Support Advisory Layer (Stage 5)
+Generate multi-target session advisories (`predicted_Duration`, `predicted_ConsumedkWh`), departure time projections (`projected_unplug_time_utc`), physical validity checks, and smart-charging flexibility metrics:
+
+```bash
+# Run batch decision support with default HGBR models on canonical dataset
+python scripts/run_decision_support.py
+
+# Custom input/output paths and specific model architecture
+python scripts/run_decision_support.py \
+    --input data/processed/electric_nation/features.parquet \
+    --output data/processed/electric_nation/decision_support/session_advisories.parquet \
+    --report-dir reports/decision_support \
+    --model HistGradientBoostingRegressor
+```
+
+Outputs generated in `reports/decision_support/`:
+- `prediction_summary.csv`: Statistical percentiles and valid/invalid counts across predictions.
+- `flexibility_summary.csv`: Same-day vs overnight connection and charging flexibility metrics.
+- `decision_support_summary.md`: Publication-grade operational advisory summary report.
+
+#### Python Decision Support API
+
+```python
+import pandas as pd
+from tarang.decision_support import DecisionSupportEngine, analyze_charging_flexibility
+
+# Initialize engine with pre-trained models
+engine = DecisionSupportEngine(model_name="HistGradientBoostingRegressor")
+
+# 1. Single-session advisory with arrival parameters and history
+advisory = engine.predict_single_advisory(
+    start_time="2018-05-15 18:00:00",
+    car_kw=7.0,
+    car_kwh=40.0,
+    history=history_df,
+)
+print(f"Arrival (UTC): {advisory.arrival_time_utc}")
+print(f"Predicted Duration: {advisory.predicted_duration_hours:.2f} hours")
+print(f"Predicted Energy: {advisory.predicted_energy_kwh:.2f} kWh")
+print(f"Projected Unplug (UTC): {advisory.projected_unplug_time_utc}")
+print(f"Duration Prediction Valid: {advisory.duration_prediction_valid}")
+
+# 2. Batch session advisories
+advisories_df = engine.predict_batch_advisories(features_df)
+
+# 3. Smart-charging flexibility analysis
+flex_stats = analyze_charging_flexibility(features_df)
+print(f"Overnight Median Flexibility Ratio: {flex_stats['overnight_median_ratio']:.3f}")
+```
+
 ### 7. Run Test Suite
 Run the full test suite including unit tests and integration tests:
 
@@ -341,12 +399,13 @@ python -m pytest tests/ -v
 
 ## Documentation
 
-Detailed architectural, data contract, and inference specifications are maintained in `docs/`:
+Detailed architectural, data contract, inference, and decision support specifications are maintained in `docs/`:
 
 - [**Architecture & Project Structure**](docs/architecture/project_structure.md): System architecture, package responsibilities, subsystem data flows, and full roadmap.
 - [**Data Contract & Screening Rules**](docs/data/data_contract.md): Exact 10-step screening pipeline, anti-leakage boundaries, and feature engineering specifications.
 - [**Data Dictionary**](docs/data/data_dictionary.md): Raw transaction/metadata fields and canonical 30-column definitions, units, and ranges.
 - [**Inference Contract & Specification**](docs/inference/inference_contract.md): Stage 4 single-session API, batch CLI, cold-start rules, and model artifact specifications.
+- [**Decision Support Contract & Specification**](docs/decision_support/decision_support_contract.md): Stage 5 advisory schema, physical validity rules, unplug projections, and flexibility definitions.
 
 ---
 

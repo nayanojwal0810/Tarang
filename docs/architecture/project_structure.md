@@ -1,7 +1,7 @@
 # TARANG — Architecture and Project Structure
 
 **Domain**: Electric Vehicle Charging Intelligence System  
-**Current Stage**: Stage 4 — Inference  
+**Current Stage**: Stage 5 — Decision Support  
 **Repository**: `nayanojwal0810/Tarang`
 
 ---
@@ -38,6 +38,10 @@ Tarang/
 |   |-- data/
 |       |-- data_contract.md         # Schema rules, anti-leakage boundaries, and screening sequence
 |       |-- data_dictionary.md       # Raw and canonical column definitions, units, and ranges
+|   |-- inference/
+|       |-- inference_contract.md    # Stage 4 single-session and batch inference contract
+|   |-- decision_support/
+|       |-- decision_support_contract.md # Stage 5 advisory schema, physical validity, and flexibility contract
 |
 |-- reports/
 |   |-- data_audit/                  # Quality audit report (dataset_audit_report.md) and CSV summaries
@@ -45,6 +49,7 @@ Tarang/
 |   |-- modeling/
 |       |-- duration/                # Duration evaluation report, figures, heatmaps, and metrics
 |       |-- energy/                  # Energy evaluation report, figures, and metrics
+|   |-- decision_support/            # Stage 5 prediction and flexibility summaries and operational report
 |
 |-- scripts/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
@@ -53,6 +58,7 @@ Tarang/
 |   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
 |   |-- run_evaluation.py            # CLI entry point: model evaluation, TreeSHAP, and subgroup analysis
 |   |-- run_inference.py             # CLI entry point: batch inference on pre-engineered feature sets
+|   |-- run_decision_support.py      # CLI entry point: batch decision support, occupancy, and flexibility
 |
 |-- src/
 |   |-- tarang/
@@ -92,6 +98,11 @@ Tarang/
 |       |   |-- validation.py        # Feature schema and session history validation
 |       |   |-- feature_builder.py   # Single-session 13-predictor construction from history
 |       |   |-- engine.py            # Low-latency prediction engine (predict_single, predict_batch)
+|       |-- decision_support/        # Stage 5 session occupancy and flexibility advisory layer
+|       |   |-- __init__.py
+|       |   |-- engine.py            # DecisionSupportEngine, SessionAdvisory, validity & unplug calculation
+|       |   |-- flexibility.py       # Smart-charging flexibility analysis wrapper
+|       |   |-- reporting.py         # Summary tables and operational Markdown report generator
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -100,7 +111,7 @@ Tarang/
 |           |-- eda_plots.py         # Multi-panel Matplotlib figures with marginal distributions
 |
 |-- tests/
-|   |-- unit/                        # Fast, isolated unit test suite (audit, screening, features, modeling, inference)
+|   |-- unit/                        # Fast, isolated unit test suite (audit, screening, features, modeling, inference, decision support)
 |   |-- integration/                 # End-to-end integration tests on real and synthetic pipelines
 |
 |-- .gitignore
@@ -177,6 +188,11 @@ Tarang/
 - **`feature_builder.py`**: Single-session 13-predictor vector construction from arrival timestamp, vehicle specs, and participant history with exact holiday override, cyclical encoding, 336-hour duration capping, and cold-start rejection.
 - **`engine.py`**: Single-session and batch inference engine (`predict_single`, `predict_batch`, `InferenceEngine`) preserving row ordering and index alignment without output clipping or transformation.
 
+### 3.9 `tarang.decision_support`
+- **`engine.py`**: Decision support advisory engine (`DecisionSupportEngine`, `SessionAdvisory`, `generate_session_advisory`, `generate_batch_advisories`), non-negativity and finiteness checks (`is_prediction_valid`), and projected unplug timestamp calculations in UTC (yielding `NaT` on invalid predictions).
+- **`flexibility.py`**: Smart-charging flexibility analysis wrapper (`analyze_charging_flexibility`), Europe/London local calendar date classification (same-day vs overnight), and graceful schema availability validation.
+- **`reporting.py`**: Operational decision support artifact synthesis (`generate_prediction_summary_table`, `generate_flexibility_summary_table`, `generate_decision_support_markdown_report`, `save_decision_support_artifacts`).
+
 ---
 
 ## 4. Architecture Roadmap
@@ -210,7 +226,7 @@ flowchart TD
         InferenceEngine["Batch & Single-Session\nInference Pipeline"]
     end
 
-    subgraph Stage5["Stage 5: Decision Support (Planned)"]
+    subgraph Stage5["Stage 5: Decision Support (Completed)"]
         DecisionSupport["Smart Charging Advisory &\nFlexibility Analytics"]
     end
 
@@ -232,7 +248,7 @@ flowchart TD
 2. **Stage 2 — Benchmark Predictive Modeling** (Completed): Dual-target benchmark models (LR, QR, HGBR) and baselines (Mean, Median, LastValue).
 3. **Stage 3 — Model Evaluation, Behavioral Analysis & Explainability** (Completed): TreeSHAP explainability, behavioral regressions, model agreement, temporal stability, subgroup analysis, and publication reports.
 4. **Stage 4 — Inference** (Completed): Batch and single-session prediction engine, feature schema enforcement, lag state retrieval, and low-latency inference pipelines.
-5. **Stage 5 — Decision Support** (Planned): Smart charging advisory analytics, flexibility modeling ($\text{ChargingDuration} / \text{PluggedInDuration}$), demand shifting potential, and bay occupancy planning.
+5. **Stage 5 — Decision Support** (Completed): Smart charging advisory analytics, session occupancy projections (`projected_unplug_time_utc`), validity flags, smart-charging flexibility modeling, and operational decision reporting.
 6. **Stage 6 — Streamlit Application** (Planned): Interactive web dashboard for session inspection, predictive intelligence, flexibility visualization, and scenario planning.
 7. **Stage 7 — Integration, Validation & Release** (Planned): End-to-end integration testing, system-wide performance benchmarking, release packaging, and user documentation.
 

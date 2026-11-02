@@ -43,6 +43,10 @@ EVALUATION_DATA_DIR: Path = DATA_PROCESSED_DIR / "evaluation"
 DURATION_EVALUATION_DATA_DIR: Path = EVALUATION_DATA_DIR / "duration"
 ENERGY_EVALUATION_DATA_DIR: Path = EVALUATION_DATA_DIR / "energy"
 
+# Decision support data directories
+DECISION_SUPPORT_DATA_DIR: Path = DATA_PROCESSED_DIR / "decision_support"
+DEFAULT_SESSION_ADVISORIES_FILE: Path = DECISION_SUPPORT_DATA_DIR / "session_advisories.parquet"
+
 TARGET_DURATION: str = "Duration"
 TARGET_ENERGY: str = "ConsumedkWh"
 
@@ -74,6 +78,10 @@ EDA_REPORTS_DIR: Path = REPORTS_DIR / "eda"
 EVALUATION_REPORTS_DIR: Path = REPORTS_DIR / "modeling"
 DURATION_EVALUATION_REPORT_DIR: Path = EVALUATION_REPORTS_DIR / "duration"
 ENERGY_EVALUATION_REPORT_DIR: Path = EVALUATION_REPORTS_DIR / "energy"
+DECISION_SUPPORT_REPORTS_DIR: Path = REPORTS_DIR / "decision_support"
+DEFAULT_DECISION_PREDICTION_SUMMARY_FILE: Path = DECISION_SUPPORT_REPORTS_DIR / "prediction_summary.csv"
+DEFAULT_DECISION_FLEXIBILITY_SUMMARY_FILE: Path = DECISION_SUPPORT_REPORTS_DIR / "flexibility_summary.csv"
+DEFAULT_DECISION_REPORT_FILE: Path = DECISION_SUPPORT_REPORTS_DIR / "decision_support_summary.md"
 
 # ==============================================================================
 # Schema Definitions

@@ -1,0 +1,3 @@
+category,total_sessions,evaluated_in_range,valid_sessions,mean_ratio,median_ratio
+Same-Day Sessions,21700,15947,15947,0.6887,0.7798
+Overnight Sessions,37820,29348,29349,0.1876,0.1432
