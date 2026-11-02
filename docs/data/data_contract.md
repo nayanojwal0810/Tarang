@@ -1,98 +1,94 @@
 # Data contract
 
-This document defines how TARANG reads charging records, prepares the session dataset, and creates the model inputs and targets.
+This document explains which Electric Nation files TARANG reads, how we prepare charging sessions, and which values the models use.
 
-## Input files
+## Source files
 
-Place these workbooks in `data/raw/electric_nation/`:
+Place these workbooks in data/raw/electric_nation/:
 
-| File | Sheet | Purpose |
+| File | Sheet | Contents |
 |---|---|---|
-| `CrowdCharge Transactions.xlsx` | `Transaction Data` | Charging sessions and transaction details. |
-| `ChargerInstall.xlsx` | `20181126_ChargerInstall_DriveEl` | Participant, charger, and vehicle details. |
+| CrowdCharge Transactions.xlsx | Transaction Data | Charging sessions and transaction details. |
+| ChargerInstall.xlsx | 20181126_ChargerInstall_DriveEl | Participant, charger, and vehicle details. |
 
-The transaction file must contain `TransactionID`, `ChargerID`, `ParticipantID`, `CarKW`, `CarKWh`, `StartTime`, `StopTime`, `ConsumedkWh`, and `Trial`.
+The transaction sheet must include TransactionID, ChargerID, ParticipantID, CarKW, CarKWh, StartTime, StopTime, ConsumedkWh, and Trial.
 
-The metadata file must contain `ParticipantID`, `Charger`, `DCSProvider`, `CarMake`, `CarModel`, `CarkW`, and `CarkWh`.
+The vehicle sheet must include ParticipantID, Charger, DCSProvider, CarMake, CarModel, CarkW, and CarkWh.
 
 ## Prediction targets
 
-TARANG predicts two values at the time a vehicle plugs in:
+TARANG predicts two values for a new session:
 
 | Target | Meaning | Unit |
 |---|---|---|
-| `Duration` | Total time between plug-in and unplug. | Hours |
-| `ConsumedkWh` | Energy delivered during the charging session. | kWh |
+| Duration | Time from plug-in to unplug. | Hours |
+| ConsumedkWh | Energy delivered during the session. | kWh |
 
-TARANG calculates duration from `StopTime - StartTime`. It removes sessions shorter than five minutes and caps the duration target at 336 hours. It keeps the original `StopTime` for historical time calculations.
+We calculate Duration from StopTime minus StartTime. We remove sessions shorter than five minutes and cap the target at 336 hours. We keep the recorded StopTime unchanged.
 
-The data preparation process does not remove or cap energy readings based on their size. The audit report flags unusual values for review.
+We do not remove or cap energy readings because of their size. The audit report lists unusual readings for review.
 
 ## Time handling
 
-The source timestamps use UTC. TARANG parses them as UTC-aware timestamps and keeps their recorded clock values.
+The source timestamps use UTC. We parse them as UTC-aware timestamps and keep their recorded times.
 
-The model calendar and history inputs use UTC. The flexibility analysis classifies same-day and overnight sessions using local UK dates in `Europe/London`.
+The model's calendar and history features use UTC. The charging ratio analysis uses local UK dates in Europe/London to classify same-day and overnight sessions.
 
 ## Session preparation
 
-TARANG applies these operations in order:
+We prepare the dataset in this order:
 
-1. Exclude records where `Trial == 3`.
-2. Calculate plugged-in duration and remove sessions shorter than five minutes.
-3. Cap the duration target at 336 hours without changing `StopTime`.
-4. Calculate the global maximum start hour after the first two filters. Include rows with a missing participant ID when calculating this value.
-5. Sort each participant's sessions by `StartTime`.
-6. Calculate the time from the previous session's raw `StopTime` to the current `StartTime`.
-7. Remove sessions with a negative gap. Do not recalculate the gap for later rows.
-8. Drop the first remaining session for each participant. Keep its duration and energy as history for the first retained session.
+1. Exclude records where Trial equals 3.
+2. Calculate connection duration and remove sessions shorter than five minutes.
+3. Cap the Duration target at 336 hours without changing StopTime.
+4. Calculate the global maximum start hour after these filters. Include rows with a missing ParticipantID in this calculation.
+5. Sort each participant's records by StartTime.
+6. Calculate the gap from the previous session's recorded StopTime to the current StartTime.
+7. Remove sessions with a negative gap. We do not recalculate the gap for later rows.
+8. Drop the first remaining session for each participant. We keep its duration and energy as history for the next retained session.
 9. Keep participants with at least 10 retained sessions.
-10. Keep participants whose retained session count is at least their observation span in days divided by seven.
-11. Calculate the historical features and combine the participant records into one dataset sorted by `StartTime`.
+10. Apply the observation-density rule: retained sessions must be at least the observation span in days divided by seven.
+11. Create the historical features and combine the retained sessions in StartTime order.
 
-The participant integer ID keeps the original group enumeration value. TARANG does not renumber IDs after filtering.
+The prepared dataset contains 59,520 sessions from 267 participants.
 
 ## Model inputs
 
-Each model receives exactly these 13 inputs in this order:
+Each model receives these 13 inputs in this order:
 
 | Feature | Meaning |
 |---|---|
-| `weekday` | 1 for Monday to Friday, except designated holidays; otherwise 0. |
-| `weekend` | 1 for Saturday or Sunday, except designated holidays; otherwise 0. |
-| `holiday` | 1 for one of the 13 listed holiday dates; otherwise 0. |
-| `month` | UTC month number from 1 to 12. |
-| `StartCos` | Cosine of 2 pi times the normalized start hour. |
-| `StartSin` | Sine of the normalized start hour multiplied by (2\pi). |
-| `StartHourNorm` | UTC start hour divided by the global maximum start hour. |
-| `TimeSinceLastStop` | Hours from the previous session's raw stop time to the current start time. |
-| `sessionsToday` | Count of earlier sessions for the participant on the same UTC date. |
-| `LastDuration` | Duration of the immediately previous session, capped at 336 hours. |
-| `LastConsumedkWh` | Energy from the immediately previous session. |
-| `CarKW` | Vehicle onboard charger rating in kW. |
-| `CarKWh` | Vehicle battery capacity in kWh. |
+| weekday | 1 for Monday to Friday, except designated holidays; otherwise 0. |
+| weekend | 1 for Saturday or Sunday, except designated holidays; otherwise 0. |
+| holiday | 1 for one of the 13 listed holiday dates; otherwise 0. |
+| month | UTC month number from 1 to 12. |
+| StartCos | Cosine value for the normalized UTC start hour. |
+| StartSin | Sine value for the normalized UTC start hour. |
+| StartHourNorm | UTC start hour divided by the global maximum start hour. |
+| TimeSinceLastStop | Hours from the previous session's recorded stop time to the current start time. |
+| sessionsToday | Number of earlier sessions for the participant on the same UTC date. |
+| LastDuration | Duration of the immediately previous session, capped at 336 hours. |
+| LastConsumedkWh | Energy from the immediately previous session. |
+| CarKW | Vehicle charger power rating in kW. |
+| CarKWh | Vehicle battery capacity in kWh. |
 
-The 13 feature names and their order are defined in `tarang.config.FEATURE_NAMES`.
+The feature names and their order come from tarang.config.FEATURE_NAMES.
 
 ## Holiday dates
 
-TARANG uses these 13 dates for 2017 and 2018:
+We mark these dates as holidays:
 
-- 2017-01-01, 2017-01-02, 2017-04-14, 2017-05-01, 2017-05-29, 2017-12-25, 2017-12-26
-- 2018-01-01, 2018-03-30, 2018-05-07, 2018-05-28, 2018-12-25, 2018-12-26
+- 2017: January 1, January 2, April 14, May 1, May 29, December 25, December 26.
+- 2018: January 1, March 30, May 7, May 28, December 25, December 26.
 
-On these dates, `weekday` and `weekend` are both zero and `holiday` is one.
+On these dates, weekday and weekend are 0 and holiday is 1.
 
-## Use only information known at arrival
+## Information available at arrival
 
-The current session's end time, duration, and energy are not known at plug-in time. TARANG must not use these values as model inputs.
+At plug-in time, the current session's end time, duration, and energy are not yet known. We do not use the current session's StopTime, Duration, ConsumedkWh, ChargingDuration, EndCharge, or Hot_Unplug as model inputs.
 
-Fields such as `StopTime`, `PluggedInTime`, `ConsumedkWh`, `ChargingDuration`, `EndCharge`, and `Hot_Unplug` are not current-session predictors. Historical features must use completed earlier sessions only.
+We calculate history features only from completed earlier sessions. This prevents information from the current session's outcome from entering its prediction.
 
-## Processed dataset
+## Prepared dataset
 
-The preparation script writes:
-
-`data/processed/electric_nation/features.parquet`
-
-The file contains 30 columns, including session details, targets, calendar fields, historical features, and a participant ID. The exact column names are defined in `tarang.config.CANONICAL_COLUMNS`.
+The preparation script writes data/processed/electric_nation/features.parquet. It contains 30 columns, including source session details, prediction targets, calendar features, history features, and participant identifiers. The full column list comes from tarang.config.CANONICAL_COLUMNS.

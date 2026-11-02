@@ -1,58 +1,59 @@
-# Dataset audit report
+# Dataset audit
 
-## Purpose
-
-We checked the two Electric Nation workbooks before using their records for charging analysis and prediction. The audit reviewed timestamps, transaction quality, participant details, vehicle data, energy readings, and the number of sessions available after filtering.
+We check the Electric Nation transaction and vehicle records before using them for charging analysis and prediction. The audit covers record quality, timestamps, participant details, vehicle specifications, and energy readings.
 
 ## Data checked
 
-- `CrowdCharge Transactions.xlsx`, sheet `Transaction Data`
-- `ChargerInstall.xlsx`, sheet `20181126_ChargerInstall_DriveEl`
+| Source file | Sheet | Records |
+|---|---|---:|
+| CrowdCharge Transactions.xlsx | Transaction Data | 71,264 |
+| ChargerInstall.xlsx | 20181126_ChargerInstall_DriveEl | 673 |
 
-The transaction file contains 71,264 records and 300 identified participants. The charger installation file contains 673 participant records.
+The transaction data contains 300 non-empty participant IDs. The vehicle file contains 673 participant records.
 
 ## Main findings
 
 | Check | Result |
 |---|---:|
 | Transaction records | 71,264 |
-| Participants in transactions | 300 |
-| Participants matched to installation records | 300 of 300 |
-| Records without a participant ID | 3,899 |
+| Transaction participants matched to vehicle records | 300 of 300 |
+| Records without ParticipantID | 3,899 |
 | Duplicate transaction IDs | 0 |
 | Duplicate complete rows | 0 |
-| Records with an end time before the start time | 0 |
-| Same-participant overlaps found by the audit | 160 |
+| Stop time before start time | 0 |
+| Overlapping sessions found by the audit | 160 |
 | Missing energy readings | 1 |
 | Energy readings above 100 kWh | 20 |
-| Readings above the vehicle's recorded battery capacity | 1,788 |
+| Energy readings above recorded battery capacity | 1,788 |
 
-All 300 participants found in the transaction data matched an installation record. The audit also found 3,899 sessions without a participant ID. Of these, 3,774 match known sessions on charger ID, start time, stop time, and energy; 125 are linked to a charger not listed in the installation file.
+All 300 participants with an ID in the transaction data match a record in the vehicle file.
 
-The audit found 160 overlapping sessions when it compared each session with the latest stop time of all earlier sessions for that participant. This is a diagnostic count. The preparation process applies its separate negative-gap filter in sequence.
+The audit finds 3,899 transactions without a ParticipantID. Of these, 3,774 match known sessions by charger ID, start time, stop time, and energy. The remaining 125 records use a charger that does not appear in the vehicle file.
 
-## Prepared dataset
+The audit also finds 160 overlapping sessions by comparing each session with the latest stop time of earlier sessions for the same participant. This is a diagnostic count. The preparation process uses a separate sequential gap check.
 
-The preparation process excludes Trial 3 records, removes sessions shorter than five minutes, caps the duration target at 336 hours, and applies participant history and observation-density rules.
+## How we prepare the dataset
 
-The current processed dataset contains:
+We apply these main rules:
 
-- 59,520 sessions
-- 267 participants
-- 13 model input features
-- Two prediction targets: duration and energy
+1. Exclude Trial 3 records.
+2. Remove sessions shorter than five minutes.
+3. Cap the duration target at 336 hours.
+4. Remove sessions with a negative gap from the previous session.
+5. Use the first available session as history and retain later sessions for modelling.
+6. Keep participants with at least 10 retained sessions and enough observations for their observation period.
 
-The pipeline keeps energy readings without clipping them. The audit flags high readings for review but does not remove them from the processed data.
+The prepared dataset contains 59,520 sessions from 267 participants. Each session has 13 model inputs and two prediction targets: duration and energy.
 
-## Detailed audit tables
+We keep energy readings without clipping them. The audit identifies unusual values for review, but it does not remove them from the prepared data.
 
-The CSV files in this folder contain the row counts and checks behind this summary:
+## What the checks mean
+
+The source records contain enough information to prepare the model inputs and targets. However, missing participant IDs, overlapping sessions, and unusually high energy readings should be considered when interpreting results.
+
+## Supporting tables
 
 - [Transaction quality](transaction_quality_summary.csv)
 - [Participant reconciliation](participant_reconciliation.csv)
 - [Vehicle metadata quality](metadata_quality_summary.csv)
 - [Feature availability and leakage checks](feature_feasibility.csv)
-
-## Conclusion
-
-The transaction and vehicle records provide the fields needed to prepare the session dataset and build the two prediction targets. The audit findings above should be kept in mind when interpreting results, especially records without participant IDs and unusually high energy readings.

@@ -1,64 +1,52 @@
-# TARANG — Stage 5: Decision Support Summary Report
+# TARANG decision support summary
 
-**System**: TARANG — EV Charging Intelligence System  
-**Stage**: Stage 5 — Decision Support  
-**Model Architecture**: `HistGradientBoostingRegressor`  
-**Source Dataset**: `data/processed/electric_nation/features.parquet`  
-**Evaluation Scope**: 59,520 charging sessions  
-**Generated At**: 2026-11-02 20:27:10 UTC  
+We apply the duration and energy models to the 59,520 sessions in the prepared dataset. We then calculate projected unplug times and summarize historical active charging time.
 
----
+The prediction summary describes model outputs across the prepared dataset. It does not measure model accuracy. The duration and energy evaluation reports provide the test results.
 
-## 1. Predictive Session Advisories Distribution
+## Prediction outputs
 
-The decision support layer generates raw numeric estimates of connection duration and energy demand, performs finite and non-negative validity verification, and calculates projected departure timestamps.
+| Target | Total sessions | Valid predictions | Invalid predictions | Mean prediction | Median prediction |
+|---|---:|---:|---:|---:|---:|
+| Connection duration (hours) | 59,520 | 59,518 | 2 | 10.05 | 11.47 |
+| Energy consumption (kWh) | 59,520 | 59,520 | 0 | 10.23 | 7.66 |
 
-| Target | Unit | Total Sessions | Valid Predictions | Invalid (Flagged) | Mean | Std Dev | Min | 25% | Median (50%) | 75% | 90% | Max |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Duration** | hours | 59,520 | 59,518 | 2 | 10.05 | 4.40 | 0.09 | 6.24 | 11.47 | 13.27 | 14.62 | 25.81 |
-| **ConsumedkWh** | kWh | 59,520 | 59,520 | 0 | 10.23 | 7.28 | 0.36 | 5.68 | 7.66 | 13.07 | 18.65 | 51.43 |
+TARANG marks a prediction as valid when it is finite and non-negative. It keeps the model's original numeric output. When the duration prediction is invalid, TARANG does not calculate a projected unplug time.
 
-### Operational Advisory Integrity
-- **Numeric Validity Verification**: Estimator outputs are strictly validated via `isfinite(pred) and pred >= 0.0`. Flagged predictions retain their raw continuous estimator values without artificial clipping or thresholding.
-- **Occupancy Projections**: A total of **59,518 sessions (100.0%)** produced valid duration predictions and corresponding projected unplug timestamps (`projected_unplug_time_utc`). Invalid or negative duration estimates are safely represented as `NaT` (Not-a-Time) to prevent faulty bay scheduling.
+## Historical active charging ratio
 
----
+We calculate the share of a session spent actively charging:
 
-## 2. Smart-Charging Flexibility Ratio Analysis
+    Active charging ratio = (ChargingDuration / 60) / connection duration in hours
 
-Smart-charging flexibility is evaluated as the descriptive ratio of active charging duration to total connection duration:
+We classify sessions using local UK dates in Europe/London.
 
-$$\text{Flexibility Ratio} = \frac{\text{ChargingDuration} / 60.0}{(\text{StopTime} - \text{StartTime})_{\text{hours}}}$$
+| Session type | Total sessions | Valid ratios | Ratios from 0 to 1 | Mean ratio | Median ratio |
+|---|---:|---:|---:|---:|---:|
+| Same-day | 21,700 | 15,947 | 15,947 | 0.689 | 0.780 |
+| Overnight | 37,820 | 29,349 | 29,348 | 0.188 | 0.143 |
 
-Sessions are classified using local UK calendar dates (`Europe/London`) into same-day arrivals versus overnight charging sessions.
+The mean and median use all valid ratios. The histogram count includes only ratios from 0 to 1. One valid overnight ratio is above 1, so it does not appear in the histogram count.
 
-| Session Category | Total Sessions | Valid Ratios | Ratios in [0, 1] Histogram | Mean Ratio (All Valid) | Median Ratio (All Valid) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Same-Day Sessions** | 21,700 | 15,947 | 15,947 | 0.689 | 0.780 |
-| **Overnight Sessions** | 37,820 | 29,349 | 29,348 | 0.188 | 0.143 |
+This ratio describes recorded charging activity. It does not show that the remaining connection time or energy can be shifted, and it does not guarantee that a charger or grid can use that time.
 
-### Descriptive Flexibility Observations
-- **Overnight Sessions**: In the historical sample, overnight sessions exhibit an observed median ratio of **0.143** and an observed mean ratio of **0.188** calculated across all valid sessions. This descriptive ratio reflects the historical relationship between active charging duration and total plugged-in connection duration; it does not establish that the remaining connection time or energy can be shifted in practice, nor does it guarantee schedulable flexibility under operational constraints.
-- **Same-Day Sessions**: Same-day sessions exhibit an observed median ratio of **0.780** and an observed mean ratio of **0.689** across all valid sessions.
+## Batch advisory fields
 
+For each input session, TARANG adds:
 
----
+- predicted_Duration
+- predicted_ConsumedkWh
+- projected_unplug_time_utc
+- duration_prediction_valid
+- energy_prediction_valid
 
-## 3. Operational Boundaries & Non-Dispatch Scope
+## Scope
 
-> [!IMPORTANT]
-> TARANG operates strictly as an **advisory decision-support system**. The predictions, occupancy timelines, and flexibility ratios generated by this pipeline are designed to inform fleet operators, charging facility managers, and smart grid aggregators.
-> 
-> The system explicitly **does not**:
-> 1. Execute direct charger hardware actuation, power throttling, or relay switching.
-> 2. Implement autonomous grid dispatch, real-time load shedding, or carbon/tariff optimization algorithms.
-> 3. Perform post-processing clipping or artificial distortion on raw statistical predictions.
+TARANG provides statistical estimates for review. It does not schedule vehicles, control charger hardware, change charging power, optimise tariffs, or dispatch energy.
 
----
+## Supporting results
 
-## 4. References & Documentation
-
-- [**Decision Support Contract**](../../docs/decision_support/decision_support_contract.md): Advisory schema, validation specifications, and flexibility definitions.
-- [**Inference Contract**](../../docs/inference/inference_contract.md): Stage 4 single-session and batch inference architecture.
-- [**Exploratory Data Analysis Report**](../eda/eda_summary.md): Source distribution analysis for trial availability and flexibility.
-- [**Predictive Modeling Evaluation**](../modeling/duration/evaluation_summary.md): Dual-target benchmark performance and TreeSHAP explainability.
+- [Prediction output summary](prediction_summary.csv)
+- [Historical charging ratio summary](flexibility_summary.csv)
+- [Decision support contract](../../docs/decision_support/decision_support_contract.md)
+- [Inference contract](../../docs/inference/inference_contract.md)

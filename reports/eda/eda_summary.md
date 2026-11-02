@@ -1,47 +1,51 @@
 # Charging data exploration
 
-This report summarizes when participants charged, how long vehicles stayed connected, and how much energy they used.
+We explore when participants connect their vehicles, how long they stay connected, how much energy they use, and how active charging compares with total connection time.
 
-The processed dataset contains 59,520 sessions from 267 participants.
+The prepared dataset contains 59,520 sessions from 267 participants.
 
 ## Participant activity
 
-| Measure | Mean | Median | Standard deviation | Minimum | Maximum |
-|---|---:|---:|---:|---:|---:|
-| Observation period (days) | 374.88 | 379.00 | 141.95 | 22 | 624 |
-| Sessions per participant | 222.92 | 186.00 | 161.54 | 14 | 1,013 |
-| Sessions per week | 4.20 | 3.80 | 2.44 | 1.00 | 13.72 |
-| Mean connection time per participant (hours) | 13.04 | 11.71 | 8.22 | 1.64 | 85.35 |
+| Measure | Mean | Median |
+|---|---:|---:|
+| Observation period per participant (days) | 374.88 | 379.00 |
+| Sessions per participant | 222.92 | 186.00 |
+| Sessions per week | 4.20 | 3.80 |
+| Mean connection time per participant (hours) | 13.04 | 11.71 |
 
-The average participant was observed for about 375 days and recorded 4.2 sessions per week.
+We observe each participant for about 375 days on average. Participants record about 4.2 sessions per week.
 
 ## Arrival time, connection time, and energy use
 
-The most common arrival hour was 18:00 in UK local time.
+The most common arrival hour is 18:00 in local UK time.
 
 | Session measure | Mean | Median | 75th percentile | 95th percentile |
 |---|---:|---:|---:|---:|
 | Connection time (hours) | 12.14 | 11.45 | 14.92 | 25.77 |
 | Energy use (kWh) | 10.44 | 7.16 | 13.05 | 29.48 |
 
-Connection time measures how long a vehicle stays plugged in. It differs from active charging time.
+Connection time measures the full period between plug-in and unplug. It includes active charging and any time the vehicle remains connected after charging ends.
 
-## Historical charging flexibility ratio
+## Active charging within the connection period
 
-We calculate the ratio of active charging time to total connection time. We classify sessions using local UK dates.
+We calculate the ratio of active charging time to total connection time:
 
-| Session type | Total sessions | Valid ratios | Ratios in 0–1 histogram | Mean ratio | Median ratio |
+    Active charging ratio = (ChargingDuration / 60) / connection duration in hours
+
+We classify sessions by local UK dates in Europe/London.
+
+| Session type | Total sessions | Valid ratios | Ratios from 0 to 1 | Mean ratio | Median ratio |
 |---|---:|---:|---:|---:|---:|
 | Same-day | 21,700 | 15,947 | 15,947 | 0.689 | 0.780 |
 | Overnight | 37,820 | 29,349 | 29,348 | 0.188 | 0.143 |
 
-The mean and median use all valid ratios. The histogram includes only values from 0 to 1. One valid overnight ratio is above 1, which explains the difference between the valid and histogram counts.
+The mean and median use all valid ratios. The histogram includes only ratios from 0 to 1. One valid overnight ratio is above 1, so it does not appear in the histogram count.
 
-The lower overnight ratio shows that active charging took up a smaller share of the total connection period in these records. This is a description of past sessions; it does not confirm that the remaining time or energy can be shifted.
+Overnight sessions use a smaller share of their connection time for active charging in these records. This describes past sessions. It does not confirm that the remaining time or energy can be shifted.
 
 ## Figures
 
-- [Participant availability](data_availability.png)
+- [Participant data availability](data_availability.png)
 - [Connection time by arrival hour](duration_by_start_hour.png)
 - [Energy use by arrival hour](energy_by_start_hour.png)
-- [Charging flexibility distributions](charging_flexibility.png)
+- [Active charging ratios](charging_flexibility.png)

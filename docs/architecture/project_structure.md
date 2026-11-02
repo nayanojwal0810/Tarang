@@ -1,88 +1,80 @@
 # Project structure
 
-TARANG is a Python system for EV charging session analysis and prediction. The code separates data preparation, feature creation, model training, evaluation, inference, and decision support.
+TARANG is a Python application for preparing EV charging records, predicting session duration and energy use, and producing session advisories. The folders below show where we keep the main code, data, reports, and tests.
 
-## Main folders
+## Repository layout
 
-```text
-Tarang/
-├── data/
-│   ├── raw/electric_nation/          Source Excel workbooks
-│   └── processed/electric_nation/    Prepared data and model files
-├── docs/
-│   ├── architecture/                 Project structure
-│   ├── data/                         Data rules and column definitions
-│   ├── inference/                    Prediction inputs and outputs
-│   └── decision_support/             Advisory definitions
-├── reports/
-│   ├── data_audit/                   Data checks and CSV summaries
-│   ├── eda/                          Data summaries and plots
-│   ├── modeling/duration/             Duration model results
-│   ├── modeling/energy/               Energy model results
-│   └── decision_support/              Prediction and flexibility results
-├── scripts/                           Command-line entry points
-├── src/tarang/                        Python package
-└── tests/                              Unit and integration tests
-```
+    Tarang/
+    ├── app.py
+    ├── deployment_artifacts/
+    │   ├── duration/
+    │   ├── energy/
+    │   ├── processing_summary.json
+    │   └── manifest.json
+    ├── data/
+    │   ├── raw/electric_nation/
+    │   └── processed/electric_nation/
+    ├── docs/
+    ├── reports/
+    ├── scripts/
+    ├── src/tarang/
+    ├── tests/
+    ├── pyproject.toml
+    └── requirements.txt
 
-The raw and processed data folders contain files that are not stored in Git. The reports folder contains the project reports and selected result tables.
+The raw and processed data folders hold local files and are not tracked in Git. The deployment_artifacts folder contains the two trained models and the summary value that the application needs for inference.
 
-## Python package
+## Main Python packages
 
 | Package | Purpose |
 |---|---|
-| `tarang.config` | Defines paths, column names, targets, and shared settings. |
-| `tarang.data` | Loads, checks, filters, and prepares session data. |
-| `tarang.features` | Creates the 13 model inputs. |
-| `tarang.analysis` | Calculates data availability and charging pattern summaries. |
-| `tarang.visualization` | Creates data exploration plots. |
-| `tarang.modeling` | Trains models and calculates prediction errors. |
-| `tarang.evaluation` | Compares model results, studies participant differences, and calculates feature importance. |
-| `tarang.inference` | Creates predictions for single sessions and batches. |
-| `tarang.decision_support` | Combines duration and energy predictions with projected unplug times and flexibility summaries. |
+| tarang.config | Defines file paths, feature names, targets, and shared settings. |
+| tarang.data | Reads, checks, filters, and prepares charging records. |
+| tarang.features | Builds the 13 model inputs. |
+| tarang.analysis | Summarizes participant activity and charging patterns. |
+| tarang.visualization | Creates data exploration figures. |
+| tarang.modeling | Trains models and measures prediction errors. |
+| tarang.evaluation | Compares models and examines prediction errors and feature contributions. |
+| tarang.inference | Loads models and predicts duration or energy. |
+| tarang.decision_support | Combines predictions with projected unplug times and charging summaries. |
+| tarang.app | Runs the Overview, Single Prediction, and Batch Prediction pages. |
 
-## Command-line scripts
+## Main scripts
 
-Run these scripts from the repository root:
+Run scripts from the repository root.
 
-| Script | What it does |
+| Script | Purpose |
 |---|---|
-| `scripts/run_data_audit.py` | Checks the source workbooks and writes audit reports. |
-| `scripts/prepare_data.py` | Builds the processed session dataset. |
-| `scripts/run_eda.py` | Writes data summaries and plots. |
-| `scripts/run_modeling.py` | Trains models for duration and energy. |
-| `scripts/run_evaluation.py` | Creates model evaluation reports and figures. |
-| `scripts/run_inference.py` | Predicts one target for a batch of sessions. |
-| `scripts/run_decision_support.py` | Creates both predictions and session advisory outputs. |
+| scripts/run_data_audit.py | Checks the source workbooks and writes audit tables. |
+| scripts/prepare_data.py | Creates the prepared session dataset. |
+| scripts/run_eda.py | Summarizes charging activity and creates figures. |
+| scripts/run_modeling.py | Trains the duration and energy models. |
+| scripts/run_evaluation.py | Evaluates models and writes result tables and figures. |
+| scripts/run_inference.py | Runs single-target batch predictions. |
+| scripts/run_decision_support.py | Creates duration and energy advisories and summaries. |
+| scripts/verify_deployment.py | Checks the deployment bundle and runs sample inference. |
 
-## Data and output locations
+## Main data and output locations
 
-The main processed dataset is:
-
-`data/processed/electric_nation/features.parquet`
-
-Model files and training results are stored under:
-
-`data/processed/electric_nation/modeling/`
-
-Decision support batch output is stored under:
-
-`data/processed/electric_nation/decision_support/`
-
-Reports and figures are stored under `reports/`.
+- Prepared sessions: data/processed/electric_nation/features.parquet
+- Training models and results: data/processed/electric_nation/modeling/
+- Decision support outputs: data/processed/electric_nation/decision_support/
+- Deployment models and metadata: deployment_artifacts/
+- Reports and figures: reports/
 
 ## Run order
 
-Prepare the data before training models. Train the models before running inference or decision support.
+Prepare the data before training. Train the models before running inference or decision support.
 
-```bash
-python scripts/run_data_audit.py
-python scripts/prepare_data.py
-python scripts/run_eda.py
-python scripts/run_modeling.py
-python scripts/run_evaluation.py
-python scripts/run_inference.py --help
-python scripts/run_decision_support.py --help
-```
+    python scripts/run_data_audit.py
+    python scripts/prepare_data.py
+    python scripts/run_eda.py
+    python scripts/run_modeling.py
+    python scripts/run_evaluation.py
 
-The project uses Python 3.10 or later. Install the development dependencies with `pip install -e ".[dev]"` and run tests with `pytest`.
+Use the help option to see the inputs and outputs for inference and decision support:
+
+    python scripts/run_inference.py --help
+    python scripts/run_decision_support.py --help
+
+TARANG supports Python 3.11 and 3.12 in its CI workflow. Install the project with pip install -e ".[dev,app]" before running the full test suite.
