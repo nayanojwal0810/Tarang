@@ -16,6 +16,9 @@ import pandas as pd
 
 PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 
+# Deployment artifact bundle (committed to repository for Cloud deployments)
+DEPLOYMENT_ARTIFACTS_DIR: Path = PROJECT_ROOT / "deployment_artifacts"
+
 # Data directories
 DATA_DIR: Path = PROJECT_ROOT / "data"
 DATA_RAW_DIR: Path = DATA_DIR / "raw" / "electric_nation"
@@ -31,7 +34,13 @@ RAW_META_SHEET: str = "20181126_ChargerInstall_DriveEl"
 
 # Canonical processed dataset paths
 PROCESSED_FEATURES_FILE: Path = DATA_PROCESSED_DIR / "features.parquet"
-PROCESSING_SUMMARY_FILE: Path = DATA_PROCESSED_DIR / "processing_summary.json"
+# Processing summary: prefer deployment_artifacts bundle, fall back to data/processed
+_DEPLOYMENT_SUMMARY: Path = DEPLOYMENT_ARTIFACTS_DIR / "processing_summary.json"
+PROCESSING_SUMMARY_FILE: Path = (
+    _DEPLOYMENT_SUMMARY
+    if _DEPLOYMENT_SUMMARY.is_file()
+    else DATA_PROCESSED_DIR / "processing_summary.json"
+)
 
 # Modeling directories and targets
 MODELING_DIR: Path = DATA_PROCESSED_DIR / "modeling"

@@ -7,12 +7,19 @@ from __future__ import annotations
 
 import streamlit as st
 
-# Configure page metadata first before any other Streamlit calls
+# Must be the first Streamlit call.
 st.set_page_config(
-    page_title="TARANG — EV Charging Intelligence System",
+    page_title="TARANG — EV Charging Intelligence",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={
+        "About": (
+            "**TARANG** — EV Charging Intelligence System\n\n"
+            "Predictive advisory for EV charging session duration and energy consumption.\n\n"
+            "Built on the Electric Nation trial dataset (NGED Open Data)."
+        ),
+    },
 )
 
 from tarang.app.batch_prediction import render_batch_prediction_view
@@ -22,27 +29,26 @@ from tarang.app.single_prediction import render_single_prediction_view
 
 
 def main() -> None:
-    """Execute main application loop with styled navigation."""
-    # Inject enterprise custom CSS styling
+    """Execute main application loop with navigation."""
     inject_custom_css()
 
-    # Sidebar Navigation & System Meta
     with st.sidebar:
         st.markdown(
             """
-            <div style="padding: 0.5rem 0 1rem 0;">
-                <h2 style="font-size: 1.6rem; font-weight: 700; color: #0F172A; margin: 0; letter-spacing: -0.02em;">
+            <div style="padding: 0.75rem 0 1.25rem 0;">
+                <div style="font-size: 1.5rem; font-weight: 700; color: #142D43;
+                            letter-spacing: -0.02em; line-height: 1.1;">
                     ⚡ TARANG
-                </h2>
-                <div style="font-size: 0.85rem; font-weight: 500; color: #0D9488; text-transform: uppercase; letter-spacing: 0.05em;">
+                </div>
+                <div style="font-size: 0.78rem; font-weight: 500; color: #0D8585;
+                            text-transform: uppercase; letter-spacing: 0.08em;
+                            margin-top: 0.2rem;">
                     EV Charging Intelligence
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-
-        st.markdown("---")
 
         page_choice = st.radio(
             "Navigation",
@@ -55,19 +61,26 @@ def main() -> None:
 
         st.markdown(
             """
-            <div style="font-size: 0.82rem; color: #64748B; line-height: 1.6;">
-                <strong>System Configuration</strong><br>
-                &bull; Model: <code>HGBR (Absolute Error)</code><br>
-                &bull; Targets: <code>Duration (h)</code> & <code>Energy (kWh)</code><br>
-                &bull; Benchmark: <code>Electric Nation Trial</code><br>
-                &bull; Cohort: <code>59,520 Sessions</code><br>
-                &bull; Release: <code>v0.1.0-preview</code>
+            <div style="font-size: 0.78rem; color: #64748B; line-height: 1.65;">
+                <div style="font-weight: 600; color: #475569; margin-bottom: 0.35rem;">
+                    Model
+                </div>
+                HistGradientBoostingRegressor<br>
+                Absolute error · Early stopping<br><br>
+                <div style="font-weight: 600; color: #475569; margin-bottom: 0.35rem;">
+                    Dataset
+                </div>
+                Electric Nation Trial<br>
+                59,520 sessions · 267 participants<br><br>
+                <div style="font-weight: 600; color: #475569; margin-bottom: 0.35rem;">
+                    Release
+                </div>
+                v0.1.0-preview
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # Route content
     if page_choice == "Overview":
         render_overview_view()
     elif page_choice == "Single Prediction":
@@ -75,10 +88,8 @@ def main() -> None:
     elif page_choice == "Batch Prediction":
         render_batch_prediction_view()
 
-    # Global enterprise footer
     render_footer()
 
 
 if __name__ == "__main__":
     main()
-

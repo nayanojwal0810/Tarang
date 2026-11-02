@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from tarang.app.components import render_disclaimer, render_hero, render_metric_card
+from tarang.app.components import (
+    render_disclaimer,
+    render_hero,
+    render_metric_card,
+    render_privacy_notice,
+)
 from tarang.app.helpers import (
     convert_dataframe_to_csv_bytes,
     get_decision_support_engine,
@@ -51,7 +56,7 @@ def render_batch_prediction_view() -> None:
     render_hero(
         title="Batch Network Advisory & Forecasting",
         subtitle="Process multi-session fleets, generate occupancy timelines, and evaluate charging flexibility.",
-        tag="BATCH INFERENCE",
+        tag="Batch Sessions",
     )
 
     engine = get_decision_support_engine()
@@ -90,6 +95,7 @@ def render_batch_prediction_view() -> None:
 
     with col_upload:
         st.markdown("#### Upload Dataset")
+        render_privacy_notice()
         uploaded_file = st.file_uploader(
             "Upload Batch Session Data (.csv or .parquet)",
             type=["csv", "parquet"],
@@ -187,10 +193,12 @@ def render_batch_prediction_view() -> None:
         dur_valid_count = int(results_df["duration_prediction_valid"].sum())
         dur_valid_pct = (dur_valid_count / len(results_df)) * 100.0
         dur_mean = results_df.loc[results_df["duration_prediction_valid"], f"predicted_{TARGET_DURATION}"].mean()
+        dur_mean_str = f"{dur_mean:.2f}" if (dur_valid_count > 0 and pd.notna(dur_mean)) else "N/A"
 
         ene_valid_count = int(results_df["energy_prediction_valid"].sum())
         ene_valid_pct = (ene_valid_count / len(results_df)) * 100.0
         ene_mean = results_df.loc[results_df["energy_prediction_valid"], f"predicted_{TARGET_ENERGY}"].mean()
+        ene_mean_str = f"{ene_mean:.2f}" if (ene_valid_count > 0 and pd.notna(ene_mean)) else "N/A"
 
         with col_m1:
             render_metric_card("Total Sessions", f"{len(results_df):,}")
@@ -204,7 +212,7 @@ def render_batch_prediction_view() -> None:
         with col_m3:
             render_metric_card(
                 "Mean Duration",
-                f"{dur_mean:.2f}",
+                dur_mean_str,
                 unit="hrs",
                 badge_text="Valid only",
             )
@@ -218,7 +226,7 @@ def render_batch_prediction_view() -> None:
         with col_m5:
             render_metric_card(
                 "Mean Energy",
-                f"{ene_mean:.2f}",
+                ene_mean_str,
                 unit="kWh",
                 badge_text="Valid only",
             )

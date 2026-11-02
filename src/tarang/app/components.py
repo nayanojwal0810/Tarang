@@ -1,167 +1,164 @@
-"""UI Components and Enterprise Styling for TARANG Streamlit Application.
-
-Provides reusable presentation components, metric cards, status badges,
-and custom CSS adhering to enterprise energy technology aesthetic standards.
-"""
+"""Shared UI components, CSS injection, and rendering utilities for TARANG Streamlit App."""
 
 from __future__ import annotations
 
 from typing import Optional
+
 import pandas as pd
 import streamlit as st
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CSS Injection
+# ──────────────────────────────────────────────────────────────────────────────
+
 def inject_custom_css() -> None:
-    """Inject premium, enterprise-grade custom CSS styling into Streamlit DOM."""
+    """Inject minimal, scoped custom CSS for TARANG enterprise design system."""
     st.markdown(
         """
         <style>
-        /* Base typography & layout smoothing - System sans-serif stack */
-        html, body, [class*="css"] {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #0F172A;
+        /* ── Typography ── */
+        html, body, [class*="st-"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         "Helvetica Neue", Arial, sans-serif;
         }
 
-        /* Container & Card Surfaces */
+        /* ── Page hero ── */
         .tarang-hero {
-            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-            color: #FFFFFF;
-            padding: 2.2rem 2.5rem;
+            background: linear-gradient(135deg, #142D43 0%, #1a3d5a 100%);
             border-radius: 12px;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid #334155;
+            padding: 2rem 2.25rem 1.75rem;
+            margin-bottom: 1.75rem;
+            color: #F0F5F9;
+        }
+        .tarang-hero .hero-tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #0D8585;
+            background: rgba(13, 133, 133, 0.12);
+            border: 1px solid rgba(13, 133, 133, 0.3);
+            border-radius: 4px;
+            padding: 0.15rem 0.55rem;
+            margin-bottom: 0.6rem;
         }
         .tarang-hero h1 {
-            color: #FFFFFF;
-            font-size: 2.1rem;
+            font-size: 1.75rem;
             font-weight: 700;
-            letter-spacing: -0.025em;
-            margin-bottom: 0.4rem;
+            color: #F0F5F9;
+            margin: 0.3rem 0 0.45rem;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
         }
-        .tarang-hero p.subtitle {
+        .tarang-hero .hero-subtitle {
+            font-size: 0.95rem;
             color: #94A3B8;
-            font-size: 1.05rem;
-            font-weight: 400;
-            margin-bottom: 0;
             line-height: 1.5;
+            margin: 0;
         }
 
-        .tarang-card {
-            background-color: #FFFFFF;
+        /* ── Metric cards ── */
+        .tarang-metric {
+            background: #FFFFFF;
             border: 1px solid #E2E8F0;
             border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 1.25rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
-            transition: border-color 0.15s ease-in-out;
+            padding: 1.1rem 1.3rem;
+            margin-bottom: 0.85rem;
         }
-        .tarang-card:hover {
-            border-color: #CBD5E1;
-        }
-
-        .tarang-card-header {
-            font-size: 1.1rem;
+        .tarang-metric .metric-label {
+            font-size: 0.75rem;
             font-weight: 600;
-            color: #0F172A;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #64748B;
+            margin-bottom: 0.3rem;
         }
+        .tarang-metric .metric-value {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: #142D43;
+            line-height: 1.1;
+        }
+        .tarang-metric .metric-unit {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #64748B;
+            margin-left: 0.2rem;
+        }
+        .tarang-metric .metric-badge {
+            display: inline-block;
+            margin-top: 0.4rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 0.15rem 0.5rem;
+            border-radius: 20px;
+        }
+        .badge-ok, .badge-valid   { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
+        .badge-warn               { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+        .badge-err, .badge-invalid { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+        .badge-info, .badge-neutral { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
 
-        /* Metrics Display */
-        .metric-container {
-            background-color: #FFFFFF;
+        /* ── Content card ── */
+        .tarang-card {
+            background: #FFFFFF;
             border: 1px solid #E2E8F0;
             border-radius: 10px;
             padding: 1.25rem 1.4rem;
             margin-bottom: 1rem;
         }
-        .metric-label {
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: #64748B;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.35rem;
-        }
-        .metric-value {
-            font-size: 1.85rem;
-            font-weight: 700;
-            color: #0F172A;
-            line-height: 1.1;
-        }
-        .metric-unit {
+        .tarang-card-title {
             font-size: 0.95rem;
-            font-weight: 500;
-            color: #64748B;
-            margin-left: 0.25rem;
+            font-weight: 600;
+            color: #142D43;
+            margin-bottom: 0.5rem;
         }
 
-        /* Status Badges */
-        .badge-valid {
-            display: inline-block;
-            background-color: #ECFDF5;
-            color: #047857;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 0.2rem 0.55rem;
-            border-radius: 9999px;
-            border: 1px solid #A7F3D0;
-        }
-        .badge-invalid {
-            display: inline-block;
-            background-color: #FEF2F2;
-            color: #B91C1C;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 0.2rem 0.55rem;
-            border-radius: 9999px;
-            border: 1px solid #FECACA;
-        }
-        .badge-neutral {
-            display: inline-block;
-            background-color: #F1F5F9;
-            color: #475569;
-            font-size: 0.75rem;
-            font-weight: 600;
-            padding: 0.2rem 0.55rem;
-            border-radius: 9999px;
-            border: 1px solid #CBD5E1;
+        /* ── Section divider ── */
+        .section-label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #94A3B8;
+            margin-bottom: 0.6rem;
         }
 
-        /* Operational Notice Callout */
+        /* ── Notice box ── */
         .notice-box {
-            background-color: #F8FAFC;
-            border-left: 4px solid #0D9488;
-            padding: 1rem 1.25rem;
+            background: #F8FAFC;
+            border-left: 3px solid #0D8585;
+            padding: 0.85rem 1.1rem;
             border-radius: 0 8px 8px 0;
-            margin: 1.25rem 0;
-            font-size: 0.92rem;
+            font-size: 0.88rem;
             color: #334155;
-            line-height: 1.5;
+            line-height: 1.55;
+            margin: 1rem 0;
         }
-        .notice-box strong {
-            color: #0F172A;
-        }
+        .notice-box strong { color: #142D43; }
 
-        /* Streamlit Button Tweaks */
-        div.stButton > button:first-child {
-            font-weight: 500;
-            border-radius: 8px;
-            padding: 0.55rem 1.25rem;
-            transition: all 0.15s ease-in-out;
-        }
-
-        /* Footer styling */
+        /* ── Footer ── */
         .tarang-footer {
-            margin-top: 3.5rem;
-            padding-top: 1.5rem;
+            margin-top: 3rem;
+            padding-top: 1.25rem;
             border-top: 1px solid #E2E8F0;
-            font-size: 0.85rem;
-            color: #64748B;
+            font-size: 0.78rem;
+            color: #94A3B8;
             text-align: center;
+            line-height: 1.6;
+        }
+
+        /* ── Privacy notice ── */
+        .privacy-notice {
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+            border-radius: 8px;
+            padding: 0.7rem 1rem;
+            font-size: 0.8rem;
+            color: #78350F;
+            line-height: 1.5;
+            margin-bottom: 0.75rem;
         }
         </style>
         """,
@@ -169,15 +166,25 @@ def inject_custom_css() -> None:
     )
 
 
-def render_hero(title: str, subtitle: str, tag: Optional[str] = "INTELLIGENCE LAYER") -> None:
-    """Render high-contrast hero banner at top of views."""
-    tag_html = f'<span class="badge-neutral" style="background:#334155; color:#F8FAFC; border:none; margin-bottom:0.75rem;">{tag}</span>' if tag else ""
+# ──────────────────────────────────────────────────────────────────────────────
+# Page-level Primitives
+# ──────────────────────────────────────────────────────────────────────────────
+
+def render_hero(
+    title: str,
+    subtitle: str,
+    tag: Optional[str] = None,
+) -> None:
+    """Render a dark navy hero banner at the top of a page."""
+    tag_html = (
+        f'<div class="hero-tag">{tag}</div>' if tag else ""
+    )
     st.markdown(
         f"""
         <div class="tarang-hero">
             {tag_html}
             <h1>{title}</h1>
-            <p class="subtitle">{subtitle}</p>
+            <p class="hero-subtitle">{subtitle}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -189,21 +196,30 @@ def render_metric_card(
     value: str,
     unit: str = "",
     badge_text: Optional[str] = None,
+    badge_style: str = "info",
     is_valid: Optional[bool] = None,
 ) -> None:
-    """Render polished statistical metric card with optional validity badge."""
-    badge_html = ""
-    if badge_text is not None and is_valid is not None:
-        cls = "badge-valid" if is_valid else "badge-invalid"
-        badge_html = f'<div style="margin-top:0.5rem;"><span class="{cls}">{badge_text}</span></div>'
-    elif badge_text is not None:
-        badge_html = f'<div style="margin-top:0.5rem;"><span class="badge-neutral">{badge_text}</span></div>'
+    """Render a compact metric display card.
+
+    Args:
+        label: Short uppercase label.
+        value: Formatted numeric or string value.
+        unit: Optional unit string appended after value.
+        badge_text: Optional status badge text.
+        badge_style: One of 'ok', 'warn', 'err', 'info'.
+        is_valid: Optional boolean flag to set badge style ('ok' if True, 'err' if False).
+    """
+    if is_valid is not None:
+        badge_style = "ok" if is_valid else "err"
 
     unit_html = f'<span class="metric-unit">{unit}</span>' if unit else ""
+    badge_html = ""
+    if badge_text:
+        badge_html = f'<div><span class="metric-badge badge-{badge_style}">{badge_text}</span></div>'
 
     st.markdown(
         f"""
-        <div class="metric-container">
+        <div class="tarang-metric">
             <div class="metric-label">{label}</div>
             <div class="metric-value">{value}{unit_html}</div>
             {badge_html}
@@ -221,55 +237,68 @@ def render_advisory_card(
     duration_valid: bool,
     energy_valid: bool,
 ) -> None:
-    """Render comprehensive single-session advisory summary cards."""
+    """Render three-column advisory result cards."""
     c1, c2, c3 = st.columns(3)
 
-    dur_val_str = f"{duration_hours:.2f}"
-    energy_val_str = f"{energy_kwh:.2f}"
+    dur_str = f"{duration_hours:.2f}"
+    energy_str = f"{energy_kwh:.2f}"
     unplug_str = (
         unplug_utc.strftime("%Y-%m-%d %H:%M UTC")
         if (unplug_utc is not None and pd.notna(unplug_utc))
-        else "Unavailable (Invalid Duration)"
+        else "Unavailable"
     )
 
     with c1:
         render_metric_card(
             label="Connection Duration",
-            value=dur_val_str,
-            unit="hours",
-            badge_text="Valid Estimate" if duration_valid else "Flagged Non-Negative",
-            is_valid=duration_valid,
+            value=dur_str,
+            unit="h",
+            badge_text="Valid estimate" if duration_valid else "Flagged — non-positive",
+            badge_style="ok" if duration_valid else "err",
         )
-
     with c2:
         render_metric_card(
             label="Energy Demand",
-            value=energy_val_str,
+            value=energy_str,
             unit="kWh",
-            badge_text="Valid Estimate" if energy_valid else "Flagged Non-Negative",
-            is_valid=energy_valid,
+            badge_text="Valid estimate" if energy_valid else "Flagged — non-positive",
+            badge_style="ok" if energy_valid else "err",
         )
-
     with c3:
         render_metric_card(
             label="Projected Departure",
             value=unplug_str,
             unit="",
-            badge_text="Arrival + Predicted Duration" if duration_valid else "Requires Valid Duration",
-            is_valid=duration_valid,
+            badge_text="Arrival + predicted duration" if duration_valid else "Requires valid duration",
+            badge_style="ok" if duration_valid else "warn",
         )
 
 
 def render_disclaimer() -> None:
-    """Render concise advisory boundaries notice."""
+    """Render operational boundary notice."""
     st.markdown(
         """
         <div class="notice-box">
-            <strong>Advisory Decision-Support Notice:</strong> TARANG generates statistical forecasts
-            of EV connection duration and energy demand to assist facility planning and bay utilization.
-            It does not perform real-time hardware actuation, power throttling, dynamic tariff scheduling,
-            or grid dispatch. Continuous model predictions are preserved in their raw continuous form
-            without artificial clipping.
+            <strong>Advisory Scope.</strong> TARANG generates statistical session forecasts based on
+            historical driver behaviour patterns. Predictions are informational estimates and do not
+            control charging hardware, execute grid dispatch commands, or guarantee charging
+            availability. Connection duration differs from active charging time — a vehicle may
+            finish charging before departure. Forecasts should be interpreted as probabilistic
+            advisories, not operational guarantees.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_privacy_notice() -> None:
+    """Render a short upload-privacy notice for workflows that accept user files."""
+    st.markdown(
+        """
+        <div class="privacy-notice">
+            <strong>Privacy notice.</strong> Uploaded files are processed in your active browser
+            session and are not stored, logged, or shared. Do not upload files containing personally
+            identifiable, confidential, or commercially sensitive data.
         </div>
         """,
         unsafe_allow_html=True,
@@ -277,16 +306,16 @@ def render_disclaimer() -> None:
 
 
 def render_footer() -> None:
-    """Render professional application footer."""
+    """Render a compact global footer."""
     st.markdown(
         """
         <div class="tarang-footer">
-            <strong>TARANG — EV Charging Intelligence System</strong> &bull;
-            Lead Author: <em>A. Nayanojwal Sri Tej</em><br>
-            Empirical Benchmark Dataset: <em>Electric Nation (National Grid Electricity Distribution)</em> &bull;
-            Reference: Kreft et al. (2024), <em>Applied Energy</em>.
+            TARANG — EV Charging Intelligence System &nbsp;·&nbsp;
+            Built on the <a href="https://commercial.nationalgrid.co.uk/electric-nation-data"
+            target="_blank" style="color: #64748B;">Electric Nation Trial</a> dataset
+            (NGED Open Data) &nbsp;·&nbsp;
+            A. Nayanojwal Sri Tej
         </div>
         """,
         unsafe_allow_html=True,
     )
-

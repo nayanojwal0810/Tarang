@@ -7,7 +7,12 @@ import io
 import pandas as pd
 import streamlit as st
 
-from tarang.app.components import render_advisory_card, render_disclaimer, render_hero
+from tarang.app.components import (
+    render_advisory_card,
+    render_disclaimer,
+    render_hero,
+    render_privacy_notice,
+)
 from tarang.app.helpers import (
     get_decision_support_engine,
     get_sample_history_csv,
@@ -22,7 +27,7 @@ def render_single_prediction_view() -> None:
     render_hero(
         title="Single-Session Predictive Advisory",
         subtitle="Forecast connection duration, energy demand, and projected unplug time for an arriving EV.",
-        tag="REAL-TIME INFERENCE",
+        tag="Single Session",
     )
 
     engine = get_decision_support_engine()
@@ -99,6 +104,8 @@ def render_single_prediction_view() -> None:
                 mime="text/csv",
                 help="Download sample CSV template for driver history",
             )
+
+        render_privacy_notice()
 
         uploaded_file = st.file_uploader(
             "Upload Driver Charging History (CSV)",

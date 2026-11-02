@@ -1,15 +1,11 @@
-# TARANG — EV Charging Intelligence System dependencies
-# Minimum verified dependency versions for local execution and deployment
-numpy>=1.24.0
-pandas>=2.0.0
+# TARANG — EV Charging Intelligence System
+# Pinned runtime dependencies for Streamlit Community Cloud deployment (Python 3.12)
+# Verified on Python 3.11, 3.12, 3.13 in GitHub Actions CI.
+# Development and research dependencies (matplotlib, seaborn, shap, etc.) are declared in pyproject.toml [dev].
+numpy>=1.26.0
+pandas>=2.1.0
 pyarrow>=14.0.0
-openpyxl>=3.1.0
-matplotlib>=3.8.0
-seaborn>=0.13.0
-scikit-learn>=1.3.0
-scipy>=1.11.0
+scikit-learn>=1.4.0
 joblib>=1.3.0
-shap>=0.44.0
-statsmodels>=0.14.0
-streamlit>=1.30.0
-
+scipy>=1.11.0
+streamlit>=1.35.0

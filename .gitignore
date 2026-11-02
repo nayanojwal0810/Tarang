@@ -23,10 +23,18 @@ data/processed/
 *.csv.gz
 *.parquet
 
-# Local models and checkpoints
+# Local models and checkpoints (broad exclusion)
 *.pkl
 *.joblib
-models/
+/models/
+data/**/models/
+
+# Allowlist: approved deployment artifact bundle only
+# These exact versioned artifacts are safe to publish; raw data is never included.
+!deployment_artifacts/
+!deployment_artifacts/**/
+!deployment_artifacts/**/*.joblib
+!deployment_artifacts/**/*.json
 
 # OS and IDE files
 .DS_Store

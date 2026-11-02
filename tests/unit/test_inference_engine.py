@@ -31,6 +31,7 @@ from tarang.inference.loading import (
     get_target_models_dir,
     load_model,
     normalize_target_name,
+    verify_deployment_artifacts,
 )
 from tarang.inference.validation import validate_inference_features
 from tarang.modeling.models import LastValue, MeanValue, MedianValue
@@ -300,4 +301,19 @@ def test_extra_columns_ignored_by_estimator(
     )
 
     pd.testing.assert_series_equal(preds_with_meta, preds_without_meta)
+
+
+def test_verify_deployment_artifacts_integrity() -> None:
+    """Verify deployment bundle checksums and model loadability."""
+    assert verify_deployment_artifacts() is True
+
+    # Verify loading models directly from deployment bundle
+    m_dur = load_model(TARGET_DURATION, "HistGradientBoostingRegressor")
+    assert m_dur is not None
+    assert getattr(m_dur, "n_features_in_", 0) == 13
+
+    m_ene = load_model(TARGET_ENERGY, "HistGradientBoostingRegressor")
+    assert m_ene is not None
+    assert getattr(m_ene, "n_features_in_", 0) == 13
+
 

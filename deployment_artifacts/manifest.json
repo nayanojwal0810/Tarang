@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "description": "TARANG v0.1.0-preview deployment model artifacts",
+  "models": {
+    "duration": {
+      "target": "Duration",
+      "algorithm": "HistGradientBoostingRegressor",
+      "path": "duration/models/HistGradientBoostingRegressor.joblib",
+      "size_bytes": 383592,
+      "sha256": "23e20317677330a7a6c5ce24daefc95da100bced3df790fd5a89bc885b6e7b51"
+    },
+    "energy": {
+      "target": "ConsumedkWh",
+      "algorithm": "HistGradientBoostingRegressor",
+      "path": "energy/models/HistGradientBoostingRegressor.joblib",
+      "size_bytes": 383592,
+      "sha256": "1f4196725ee375c7135a0e3edc66471dc128d05bc9f656cf7dc30b5e9b7b7814"
+    }
+  },
+  "processing_summary": {
+    "path": "processing_summary.json",
+    "size_bytes": 1028,
+    "sha256": "8c5fd53d6efaefaf9a9ce3cdb01a1600aed0e4a5567204c7b90b7cd28febc570"
+  },
+  "provenance": {
+    "dataset": "Electric Nation Trial (National Grid Electricity Distribution / NGED)",
+    "dataset_url": "https://commercial.nationalgrid.co.uk/electric-nation-data",
+    "licence": "NGED Open Data Licence",
+    "attribution": "Supported by NGED Open Data",
+    "n_sessions": 59520,
+    "n_participants": 267,
+    "training_sklearn": "1.9.0",
+    "training_python": "3.13.3",
+    "note": "Derived model artifacts. Raw Electric Nation session data is not included."
+  }
+}

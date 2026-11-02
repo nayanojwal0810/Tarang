@@ -6,6 +6,7 @@ and runtime summary parameters (Stage 1) needed for real-time and batch predicti
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -15,6 +16,7 @@ import joblib
 import numpy as np
 
 from tarang.config import (
+    DEPLOYMENT_ARTIFACTS_DIR,
     DURATION_MODELING_DIR,
     ENERGY_MODELING_DIR,
     FEATURE_NAMES,
@@ -29,6 +31,46 @@ logger = logging.getLogger("tarang.inference.loading")
 
 # In-memory model artifact cache: (target, model_name, str(models_dir)) -> loaded estimator
 _MODEL_CACHE: Dict[Tuple[str, str, str], Any] = {}
+
+
+def _sha256_file(path: Path) -> str:
+    """Return the hex SHA-256 digest of a file's contents."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_deployment_artifacts() -> bool:
+    """Verify SHA-256 checksums for the deployment artifact bundle.
+
+    Returns True if all checksums match the manifest. Logs a warning on mismatch
+    but does not raise so that development environments (data/processed/) still work.
+    """
+    manifest_path = DEPLOYMENT_ARTIFACTS_DIR / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+    for key, meta in manifest.get("models", {}).items():
+        artifact_path = DEPLOYMENT_ARTIFACTS_DIR / meta["path"]
+        if not artifact_path.is_file():
+            logger.warning("Deployment artifact missing: %s", artifact_path)
+            return False
+        actual = _sha256_file(artifact_path)
+        expected = meta.get("sha256", "")
+        if actual != expected:
+            logger.warning(
+                "SHA-256 mismatch for %s: expected %s, got %s",
+                artifact_path.name,
+                expected,
+                actual,
+            )
+            return False
+
+    logger.info("Deployment artifact checksums verified.")
+    return True
 
 
 def normalize_target_name(target: str) -> str:
@@ -88,7 +130,14 @@ def get_target_models_dir(target: str, base_dir: Optional[Path] = None) -> Path:
         return target_dir
 
     if canonical_target == TARGET_DURATION:
+        deploy_dir = DEPLOYMENT_ARTIFACTS_DIR / "duration" / "models"
+        if deploy_dir.is_dir():
+            return deploy_dir
         return DURATION_MODELING_DIR / "models"
+
+    deploy_dir = DEPLOYMENT_ARTIFACTS_DIR / "energy" / "models"
+    if deploy_dir.is_dir():
+        return deploy_dir
     return ENERGY_MODELING_DIR / "models"
 
 
