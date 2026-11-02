@@ -68,6 +68,12 @@ The table shows results on the later 20% of the data (11,904 test sessions). Low
 
 MAE is mean absolute error. MdAPE is median absolute percentage error. HistGradientBoostingRegressor has the lowest MAE and MdAPE for both targets in this comparison. For energy, MedianValue has the lowest MAPE (236.1%). The model reports explain the full results and metric definitions.
 
+The figures below compare test-set performance across the candidate models for each prediction target.
+
+![Duration model comparison](reports/modeling/duration/performance.png)
+
+![Energy model comparison](reports/modeling/energy/performance.png)
+
 The prepared dataset contains 59,520 sessions from 267 participants.
 
 ## Technology
