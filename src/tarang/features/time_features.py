@@ -78,3 +78,4 @@ def calculate_cyclical_time_features(
     out["StartSin"] = np.sin(2.0 * np.pi * out["StartHourNorm"])
 
     return out
+

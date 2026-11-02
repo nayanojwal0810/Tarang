@@ -62,3 +62,4 @@ def validate_canonical_dataset_schema(df: pd.DataFrame) -> None:
         ValueError: If any canonical columns are missing.
     """
     validate_workbook_schema(df, CANONICAL_COLUMNS, "Canonical Processed Features Dataset")
+

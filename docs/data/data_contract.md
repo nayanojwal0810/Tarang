@@ -23,17 +23,17 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 
 | Feature Name | Expected Type | Unit | Domain Constraints | Availability at Prediction | Source / Derivation Logic |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `weekday` | `int64` | Day index (0..6) | $0 \le \text{weekday} \le 6$ (Monday = 0, Sunday = 6) | Known at $t_0$ | Derived from UTC `StartTime.dt.dayofweek`. Set to 0 on holidays. |
-| `weekend` | `int64` | Binary flag (0/1) | $\in \{0, 1\}$ (1 if Saturday, Sunday, or Bank Holiday, else 0) | Known at $t_0$ | Derived from `(StartTime.dt.dayofweek >= 5) \| (holiday == 1)`. |
-| `holiday` | `int64` | Binary flag (0/1) | $\in \{0, 1\}$ (1 if UK England & Wales Bank Holiday) | Known at $t_0$ | Lookup of UTC date against official 2017–2018 Bank Holiday calendar. |
+| `weekday` | `int64` | Binary flag (0/1) | $\in \{0, 1\}$ (1 for Mon–Fri, 0 for Sat–Sun; 0 on holidays) | Known at $t_0$ | Derived from `(StartTime.dt.dayofweek < 5) & (~is_holiday)`. |
+| `weekend` | `int64` | Binary flag (0/1) | $\in \{0, 1\}$ (1 for Sat–Sun, 0 for Mon–Fri; 0 on holidays) | Known at $t_0$ | Derived from `(StartTime.dt.dayofweek >= 5) & (~is_holiday)`. |
+| `holiday` | `int64` | Binary flag (0/1) | $\in \{0, 1\}$ (1 for 13 designated UK Bank Holidays) | Known at $t_0$ | Lookup of UTC date against exact 13 trial holiday dates. Both `weekday` and `weekend` are 0 on holidays. |
 | `month` | `int64` | Month index (1..12) | $1 \le \text{month} \le 12$ | Known at $t_0$ | Derived from UTC `StartTime.dt.month`. |
-| `StartCos` | `float64` | Cyclical coordinate | $[-1.0, 1.0]$ | Known at $t_0$ | $\cos\left(\frac{2\pi \cdot (\text{hour} + \text{min}/60 + \text{sec}/3600)}{24}\right)$ in UTC. |
-| `StartSin` | `float64` | Cyclical coordinate | $[-1.0, 1.0]$ | Known at $t_0$ | $\sin\left(\frac{2\pi \cdot (\text{hour} + \text{min}/60 + \text{sec}/3600)}{24}\right)$ in UTC. |
-| `StartHourNorm` | `float64` | Normalized fraction | $[0.0, 1.0]$ | Known at $t_0$ | $(\text{hour} + \text{min}/60 + \text{sec}/3600) / \text{dataset\_max\_start\_hour}$ in UTC. |
-| `TimeSinceLastStop` | `float64` | Hours | $\ge 0.0$ | Known at $t_0$ (from prior session) | Elapsed hours between previous session `StopTime` and current `StartTime` per participant. First session dropped. |
-| `sessionsToday` | `int64` | Count ($\ge 0$) | Integer $\ge 0$ | Known at $t_0$ (from prior sessions) | Daily cumulative count of prior sessions initiated by the participant on the same UTC calendar date strictly before `StartTime`. |
-| `LastDuration` | `float64` | Hours | $0.0833 \le \text{LastDuration} \le 336.0$ | Known at $t_0$ (from prior session) | Elapsed duration in hours of immediately preceding session. |
-| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $0.01 \le \text{LastConsumedkWh} \le 100.0$ | Known at $t_0$ (from prior session) | Energy delivered in immediately preceding session directly from sequential history. |
+| `StartCos` | `float64` | Cyclical coordinate | $[-1.0, 1.0]$ | Known at $t_0$ | $\cos(2\pi \cdot \text{StartHourNorm})$ in UTC. |
+| `StartSin` | `float64` | Cyclical coordinate | $[-1.0, 1.0]$ | Known at $t_0$ | $\sin(2\pi \cdot \text{StartHourNorm})$ in UTC. |
+| `StartHourNorm` | `float64` | Normalized fraction | $[0.0, 1.0]$ | Known at $t_0$ | $\text{StartHour} / \max(\text{StartHour})$ across the filtered dataset (including null participant records). |
+| `TimeSinceLastStop` | `float64` | Hours | $\ge 0.0$ | Known at $t_0$ (from prior session) | Elapsed hours between previous session `StopTime` and current `StartTime` per participant. Sessions with negative gaps removed without gap recalculation. |
+| `sessionsToday` | `int64` | Count ($\ge 0$) | Integer $\ge 0$ | Known at $t_0$ (from prior sessions) | Daily cumulative count of prior sessions initiated by the participant on consecutive dates on or before `StartTime`. |
+| `LastDuration` | `float64` | Hours | $0.0833 \le \text{LastDuration} \le 336.0$ | Known at $t_0$ (from prior session) | Elapsed duration in hours of immediately preceding session. The first retained session receives the duration of the dropped preceding session (zero missingness). |
+| `LastConsumedkWh`| `float64` | Kilowatt-hours (kWh) | $0.01 \le \text{LastConsumedkWh} \le 100.0$ | Known at $t_0$ (from prior session) | Delivered energy of immediately preceding session. The first retained session receives the energy of the dropped preceding session (missingness preserved without backward searching). |
 | `CarKW` | `float64` | Kilowatts (kW) | $\in \{3.6, 7.0\}$ | Known prior to arrival | On-board charger maximum power rating from trial record. |
 | `CarKWh` | `float64` | Kilowatt-hours (kWh) | $4.4 \le \text{CarKWh} \le 100.0$ | Known prior to arrival | Usable battery capacity from trial record. |
 
@@ -59,7 +59,7 @@ All temporal and lag calculations are based on the **UTC** timezone standard.
 - **Plausibility Thresholds**:
   - Valid range: $[0.01, 100.0]$ kWh.
   - Readings $> 100.0$ kWh are flagged as implausibly high per the official trial findings.
-  - Missing energy: Excluded during screening.
+  - Missing energy: Retained without exclusion during screening; missing energy is preserved in the research dataset without artificial exclusion.
 
 ---
 
@@ -99,7 +99,7 @@ To guarantee valid offline evaluation and production inference, the following ru
 3. **Lag Feature Integrity**:
    - Historical lag features (`LastDuration`, `LastConsumedkWh`, `TimeSinceLastStop`) must reference **only** completed sessions where:
      $$t_{\text{stop, prev}} \le t_{0, \text{current}}$$
-   - Overlapping sessions ($t_{\text{stop, prev}} > t_{0, \text{current}}$) must be detected and filtered before lag calculations.
+   - Overlapping sessions ($t_{\text{stop, prev}} > t_{0, \text{current}}$) must be filtered before lag calculations. Note: Sequential negative-gap removal (`TimeSinceLastStop < 0` without gap recalculation) is applied during the canonical screening pipeline; non-destructive cumulative-maximum overlap detection is retained as a diagnostic in the raw data quality audit.
    - Future sessions ($t > t_0$) must **never** be accessed during training feature calculation.
 
 ---
@@ -123,8 +123,8 @@ The canonical research dataset is constructed through the following deterministi
 | 11 | First Session Drop | Drop the first remaining session per participant | 299 sessions dropped; 1 participant has 0 remaining $\rightarrow$ 60,302 sessions (298 participants) |
 | 12 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 12 participants (56 sessions) excluded $\rightarrow$ 287 participants (60,246 sessions) |
 | 13 | Observation-Density Filter | Retain participants with $\text{sessions} \ge \text{observation\_days} / 7.0$ | 20 participants (726 sessions) excluded $\rightarrow$ **267 participants (59,520 sessions)** |
-| 14 | Integer ID Assignment | Assign integer participant identifier `id` ($0 \dots 266$) | Contiguous integer ID |
-| 15 | Lag Calculation | Calculate `sessionsToday`, `LastDuration`, `LastConsumedkWh` | Lags derived from retained sessions |
+| 14 | Integer ID Assignment | Assign integer participant identifier `id` from the source group enumeration index (`i` in `enumerate(groupby("ParticipantID", sort=True))`). IDs range from 1 to 298 across 267 participants and are non-contiguous. | Preserves source group enumeration index |
+| 15 | Lag Calculation | Assign `LastDuration` and `LastConsumedkWh` from preceding sessions in pre-drop participant history (`dfp.shift(1)[1:]`), ensuring the first retained session receives the dropped preceding session's duration and energy. Calculate `sessionsToday` via consecutive-date cumulative counts. | Lags aligned; 0 nulls in `LastDuration`, 1 null in `LastConsumedkWh` |
 | 16 | Concatenation & Sort | Global sort by `StartTime`, reset index | Final 59,520 records chronologically ordered |
 
 ---
@@ -135,37 +135,35 @@ The primary processed dataset is saved to:
 
 `data/processed/electric_nation/features.parquet`
 
-### Schema (30 Columns)
+### Schema (Exact 30 Canonical Columns in Sequence)
 
-1. **Original Selected Source Fields (9)**:
-   - `StartTime` (`datetime64[ns, UTC]`)
-   - `StopTime` (`datetime64[ns, UTC]`)
-   - `ParticipantID` (`object`)
-   - `ConsumedkWh` (`float64`)
-   - `CarKW` (`float64`)
-   - `CarKWh` (`float64`)
-   - `PluggedInTime` (`int64`)
-   - `ChargingDuration` (`float64`)
-   - `Hot_Unplug` (`object`)
-2. **Operational Targets (2)**:
-   - `Duration` (`float64`)
-   - `ConsumedkWh` (`float64`) *(also listed in selected source fields)*
-3. **Day-of-Week Indicators (7)**:
-   - `Mon`, `Tue`, `Wed`, `Thu`, `Fri`, `Sat`, `Sun` (`int64`)
-4. **Calendar Features (4)**:
-   - `weekday` (`int64`)
-   - `weekend` (`int64`)
-   - `holiday` (`int64`)
-   - `month` (`int64`)
-5. **Start-Hour Features (4)**:
-   - `StartHour` (`float64`)
-   - `StartHourNorm` (`float64`)
-   - `StartCos` (`float64`)
-   - `StartSin` (`float64`)
-6. **Historical Lag Features (4)**:
-   - `TimeSinceLastStop` (`float64`)
-   - `sessionsToday` (`int64`)
-   - `LastDuration` (`float64`)
-   - `LastConsumedkWh` (`float64`)
-7. **Participant Identifier (1)**:
-   - `id` (`int64`)
+1. `StartTime` (`datetime64[ns, UTC]`): Vehicle plug-in timestamp
+2. `StopTime` (`datetime64[ns, UTC]`): Vehicle unplug timestamp (unmodified)
+3. `ParticipantID` (`object`): Anonymized participant identifier
+4. `ConsumedkWh` (`float64`): Delivered energy in kWh
+5. `CarKW` (`float64`): Onboard charger rating in kW
+6. `CarKWh` (`float64`): Battery capacity in kWh
+7. `PluggedInTime` (`int64`): Raw connection duration in minutes
+8. `ChargingDuration` (`float64`): Active charging duration in minutes
+9. `Hot_Unplug` (`object`): Disconnection event status
+10. `Duration` (`float64`): Target 1 — Plugged-in duration in hours capped at 336.0h
+11. `weekday` (`int64`): Binary flag (1 for Mon–Fri, 0 for Sat–Sun; 0 on holidays)
+12. `weekend` (`int64`): Binary flag (1 for Sat–Sun, 0 for Mon–Fri; 0 on holidays)
+13. `holiday` (`int64`): Binary flag for exact 13 designated UK holiday dates
+14. `Mon` (`int64`): Monday indicator (1 if Monday, else 0)
+15. `Tue` (`int64`): Tuesday indicator (1 if Tuesday, else 0)
+16. `Wed` (`int64`): Wednesday indicator (1 if Wednesday, else 0)
+17. `Thu` (`int64`): Thursday indicator (1 if Thursday, else 0)
+18. `Fri` (`int64`): Friday indicator (1 if Friday, else 0)
+19. `Sat` (`int64`): Saturday indicator (1 if Saturday, else 0)
+20. `Sun` (`int64`): Sunday indicator (1 if Sunday, else 0)
+21. `month` (`int64`): Calendar month index (1..12)
+22. `StartHour` (`float64`): Continuous arrival hour in UTC
+23. `StartHourNorm` (`float64`): Arrival hour normalized by dataset maximum
+24. `StartCos` (`float64`): Cyclical cosine coordinate $\cos(2\pi \cdot \text{StartHourNorm})$
+25. `StartSin` (`float64`): Cyclical sine coordinate $\sin(2\pi \cdot \text{StartHourNorm})$
+26. `TimeSinceLastStop` (`float64`): Elapsed hours since immediately preceding session stop
+27. `sessionsToday` (`int64`): Consecutive-date cumulative session count
+28. `LastDuration` (`float64`): Elapsed duration of immediately preceding session
+29. `LastConsumedkWh` (`float64`): Active energy of immediately preceding session
+30. `id` (`int64`): Integer participant identifier (source group index, non-contiguous)

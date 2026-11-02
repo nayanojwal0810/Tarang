@@ -198,17 +198,137 @@ def test_10_observation_density_condition() -> None:
     assert len(final_df) == 0
 
 
-def test_11_participant_integer_id_assignment() -> None:
-    """Each retained participant is assigned a sequential integer id starting from 0."""
+def test_11_participant_id_preserves_group_enumeration_index() -> None:
+    """Participant id preserves the source group enumeration index when an earlier group is excluded.
+
+    If group 0 is excluded by history or density filtering, group 1 retains id = 1 (not renumbered to 0).
+    """
+    # Group 0: EN000 has only 3 sessions (< 10) -> excluded
+    df0 = make_synthetic_tx(n_sessions=3, participant_id="EN000", spacing_hours=24.0)
+    # Group 1: EN001 has 15 sessions -> retained
     df1 = make_synthetic_tx(n_sessions=15, participant_id="EN001", spacing_hours=24.0)
-    df2 = make_synthetic_tx(n_sessions=15, participant_id="EN002", spacing_hours=24.0)
-    df_comb = pd.concat([df1, df2], ignore_index=True)
+    df_comb = pd.concat([df0, df1], ignore_index=True)
 
     final_df, metrics = screen_and_prepare_dataset(df_comb)
-    assert metrics["final_eligible_participants"] == 2
-    assert "id" in final_df.columns
-    p_ids = sorted(final_df["id"].unique())
-    assert p_ids == [0, 1]
+    assert metrics["final_eligible_participants"] == 1
+    assert "EN001" in final_df["ParticipantID"].values
+    # Group 0 was EN000 (excluded). Group 1 was EN001. EN001 must have id == 1!
+    assert (final_df["id"] == 1).all()
+
+
+def test_first_retained_session_receives_previous_dropped_session_lags() -> None:
+    """The first retained session receives the dropped session's Duration and ConsumedkWh."""
+    # Session 0: duration = 3.5h, energy = 15.0 kWh (dropped during lag initialization)
+    # Session 1: duration = 2.0h, energy = 10.0 kWh (first retained session)
+    # Session 2: duration = 4.0h, energy = 22.0 kWh (second retained session)
+    df = make_synthetic_tx(
+        n_sessions=15,
+        participant_id="EN001",
+        spacing_hours=24.0,
+        session_duration_hours=2.0,
+        consumed_kwh=10.0,
+    )
+    # Customize session 0
+    df.loc[0, "StopTime"] = df.loc[0, "StartTime"] + pd.Timedelta(hours=3.5)
+    df.loc[0, "ConsumedkWh"] = 15.0
+
+    # Customize session 2
+    df.loc[2, "StopTime"] = df.loc[2, "StartTime"] + pd.Timedelta(hours=4.0)
+    df.loc[2, "ConsumedkWh"] = 22.0
+
+    final_df, _ = screen_and_prepare_dataset(df)
+
+    # First retained row corresponds to original session 1
+    first_retained = final_df.iloc[0]
+    assert first_retained["LastDuration"] == pytest.approx(3.5, abs=1e-5)
+    assert first_retained["LastConsumedkWh"] == pytest.approx(15.0, abs=1e-5)
+    assert not pd.isna(first_retained["LastDuration"])
+    assert not pd.isna(first_retained["LastConsumedkWh"])
+
+    # Second retained row corresponds to original session 2
+    second_retained = final_df.iloc[1]
+    assert second_retained["LastDuration"] == pytest.approx(2.0, abs=1e-5)
+    assert second_retained["LastConsumedkWh"] == pytest.approx(10.0, abs=1e-5)
+
+
+def test_missing_previous_energy_remains_missing_without_backward_search() -> None:
+    """When the preceding session has NaN energy, LastConsumedkWh must be NaN without backward search."""
+    df = make_synthetic_tx(n_sessions=15, participant_id="EN001", spacing_hours=24.0)
+    # Session 0 has NaN energy
+    df.loc[0, "ConsumedkWh"] = np.nan
+
+    final_df, _ = screen_and_prepare_dataset(df)
+    first_retained = final_df.iloc[0]
+    # First retained session must receive NaN because session 0 energy was NaN
+    assert pd.isna(first_retained["LastConsumedkWh"])
+    # Duration is still present
+    assert not pd.isna(first_retained["LastDuration"])
+
+
+def test_global_starthournorm_includes_null_participant_rows() -> None:
+    """Rows with null ParticipantID must remain included in the global StartHourNorm normalization population."""
+    df_valid_p = make_synthetic_tx(n_sessions=15, participant_id="EN001", start_date="2017-05-01 10:00:00")
+    # Add a transaction with null ParticipantID and start hour 23:30 (23.5 hours)
+    null_p_row = pd.DataFrame({
+        "StartTime": [pd.Timestamp("2017-05-01 23:30:00")],
+        "StopTime": [pd.Timestamp("2017-05-02 02:00:00")],
+        "ParticipantID": [np.nan],
+        "ConsumedkWh": [10.0],
+        "CarKW": [7.0],
+        "CarKWh": [30.0],
+        "PluggedInTime": [150.0],
+        "ChargingDuration": [120.0],
+        "Hot_Unplug": [False],
+        "Trial": [1.0],
+    })
+    df_comb = pd.concat([df_valid_p, null_p_row], ignore_index=True)
+
+    final_df, metrics = screen_and_prepare_dataset(df_comb)
+    # Global max start hour must reflect the 23:30 (23.5) row from null participant
+    assert metrics["max_start_hour"] == pytest.approx(23.5, abs=1e-5)
+    # EN001 sessions at 10:00 must be normalized by 23.5, not 10.0
+    expected_norm = 10.0 / 23.5
+    assert pytest.approx(final_df["StartHourNorm"].iloc[0], abs=1e-5) == expected_norm
+
+
+def test_exact_canonical_column_order() -> None:
+    """The canonical dataset columns must match the exact 30-item sequence in Section 2.6."""
+    expected_columns = [
+        "StartTime",
+        "StopTime",
+        "ParticipantID",
+        "ConsumedkWh",
+        "CarKW",
+        "CarKWh",
+        "PluggedInTime",
+        "ChargingDuration",
+        "Hot_Unplug",
+        "Duration",
+        "weekday",
+        "weekend",
+        "holiday",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun",
+        "month",
+        "StartHour",
+        "StartHourNorm",
+        "StartCos",
+        "StartSin",
+        "TimeSinceLastStop",
+        "sessionsToday",
+        "LastDuration",
+        "LastConsumedkWh",
+        "id",
+    ]
+    assert CANONICAL_COLUMNS == expected_columns
+    df = make_synthetic_tx(n_sessions=15)
+    final_df, _ = screen_and_prepare_dataset(df)
+    assert list(final_df.columns) == expected_columns
 
 
 def test_12_no_additional_energy_exclusions() -> None:

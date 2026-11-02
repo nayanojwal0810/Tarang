@@ -1,6 +1,6 @@
 # TARANG — EV Charging Intelligence System
 
-TARANG is an Electric Vehicle (EV) Charging Intelligence System designed to predict charging session behaviors — specifically **plugged-in duration** and **energy consumption** — and model charging flexibility to support smart charging management, grid load integration, and bay occupancy planning.
+TARANG is an Electric Vehicle (EV) Charging Intelligence System designed to predict charging session behaviors — specifically **plugged-in duration** and **energy consumption** — and model charging flexibility to support smart charging management, grid load integration, and bay occupancy planning as advisory decision support.
 
 This repository implements the complete software foundation, data ingestion and auditing pipeline, deterministic participant screening, 13-predictor feature engineering, and exploratory data analysis using empirical records from the UK Electric Nation smart charging trial.
 
@@ -18,7 +18,7 @@ Tarang/
 |   |-- raw/
 |   |   |-- electric_nation/         # Source trial Excel workbooks (excluded from Git)
 |   |-- processed/
-|       |-- electric_nation/         # Canonical Parquet datasets and summary JSON (excluded from Git)
+|       |-- electric_nation/         # Canonical Parquet dataset and summary JSON (excluded from Git)
 |
 |-- docs/
 |   |-- architecture/
@@ -36,9 +36,9 @@ Tarang/
 |   |   |-- feature_feasibility.csv
 |   |-- eda/
 |       |-- eda_summary.md           # Descriptive EDA findings and flexibility analysis
-|       |-- data_availability.png    # 4-panel participant availability distributions
-|       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour
-|       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour
+|       |-- data_availability.png    # 4-panel participant availability distributions (26 bins)
+|       |-- duration_by_start_hour.png # 2D joint histogram of duration vs arrival hour (0.5h bins, Europe/London)
+|       |-- energy_by_start_hour.png   # 2D joint histogram of energy vs arrival hour (0.5h, 0.5 kWh bins, Europe/London)
 |       |-- charging_flexibility.png   # Flexibility ratio distributions (same-day vs overnight)
 |
 |-- scripts/
@@ -63,7 +63,7 @@ Tarang/
 |       |   |-- preprocessing.py     # Re-export facade maintaining legacy compatibility
 |       |-- features/                # Feature engineering modules
 |       |   |-- __init__.py
-|       |   |-- calendar_features.py # UK Bank Holidays, weekend/weekday override, day indicators
+|       |   |-- calendar_features.py # Exact 13 UK Bank Holidays, binary weekday/weekend, day indicators
 |       |   |-- time_features.py     # StartHour, StartHourNorm, cyclical StartCos / StartSin
 |       |   |-- historical_features.py # TimeSinceLastStop, sessionsToday, LastDuration, LastConsumedkWh
 |       |   |-- feature_engineering.py # Authoritative 13 feature definitions and extraction
@@ -76,7 +76,7 @@ Tarang/
 |
 |-- tests/
 |   |-- __init__.py
-|   |-- unit/                        # Fast, isolated unit test suite (54 tests)
+|   |-- unit/                        # Fast, isolated unit test suite (61 tests)
 |   |   |-- test_audit.py
 |   |   |-- test_loading.py
 |   |   |-- test_screening.py
@@ -88,7 +88,7 @@ Tarang/
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
 |-- pytest.ini                       # Test runner configuration
-|-- requirements.txt                 # Pinned dependencies
+|-- requirements.txt                 # Lower-bounded dependencies
 |-- README.md
 ```
 
@@ -103,28 +103,28 @@ The TARANG data pipeline ingests raw smart charging records from the UK Electric
 | **Raw Ingestion** | 300 | 71,264 | Initial trial transactions |
 | **Trial 3 Exclusion** | 300 | 65,141 | Exclude Trial 3 records (`Trial != 3`) |
 | **Duration Filtering** | 299 | 64,630 | Remove micro-sessions ($< 5$ minutes) |
-| **Negative-Gap Filtering** | 299 | 60,601 | Remove 132 sessions with `TimeSinceLastStop < 0` |
+| **Negative-Gap Filtering** | 299 | 60,601 | Remove 132 sessions with `TimeSinceLastStop < 0` without gap recalculation |
 | **First Session Removal** | 298 | 60,302 | Drop first session per participant (299 dropped; 1 user has 0 left) |
 | **Minimum History Filter** | 287 | 60,246 | Exclude participants with $< 10$ retained sessions (12 excluded, 56 sessions) |
 | **Observation-Density Filter** | **267** | **59,520** | Exclude participants where $\text{sessions} < \text{span} / 7.0$ (20 excluded, 726 sessions) |
 
-The final eligible population consists of exactly **267 participants** and **59,520 sessions**.
+The final eligible population consists of exactly **267 participants** and **59,520 sessions**. Missing energy values are retained in the research dataset without artificial exclusion.
 
 ### Authoritative 13 Features
 
-All predictors are strictly evaluated at arrival time $t_0 = \text{StartTime}$:
-1. `weekday`: Day-of-week index (0 = Monday .. 6 = Sunday; 0 on Bank Holidays)
-2. `weekend`: Binary flag (1 if Saturday, Sunday, or statutory UK Bank Holiday, else 0)
-3. `holiday`: Binary flag for UK England & Wales statutory Bank Holidays (13 across 2017–2018)
-4. `month`: Calendar month index (1..12)
-5. `StartCos`: Cyclical cosine coordinate $\cos(2\pi \cdot \text{StartHour} / 24)$
-6. `StartSin`: Cyclical sine coordinate $\sin(2\pi \cdot \text{StartHour} / 24)$
-7. `StartHourNorm`: Continuous arrival hour normalized by dataset-wide maximum $\text{StartHour} / \max(\text{StartHour})$
+All predictors are strictly evaluated at arrival time $t_0 = \text{StartTime}$ (UTC basis):
+1. `weekday`: Binary indicator (1 for Monday–Friday, 0 for Saturday–Sunday; 0 on Bank Holidays)
+2. `weekend`: Binary indicator (1 for Saturday–Sunday, 0 for Monday–Friday; 0 on Bank Holidays)
+3. `holiday`: Binary indicator for exactly 13 designated UK holiday dates (2017–2018). On a holiday, both `weekday` and `weekend` are 0.
+4. `month`: Calendar month index (1..12) of `StartTime`
+5. `StartCos`: Cyclical cosine coordinate $\cos(2\pi \cdot \text{StartHourNorm})$
+6. `StartSin`: Cyclical sine coordinate $\sin(2\pi \cdot \text{StartHourNorm})$
+7. `StartHourNorm`: Continuous arrival hour normalized by dataset-wide maximum $\text{StartHour} / \max(\text{StartHour})$ across the filtered dataset (including null participant records)
 8. `TimeSinceLastStop`: Elapsed hours since immediately preceding session stop time
-9. `sessionsToday`: Daily cumulative count of prior sessions on the same calendar date
-10. `LastDuration`: Elapsed duration in hours of immediately preceding session
-11. `LastConsumedkWh`: Active energy consumption in kWh of immediately preceding session
-12. `CarKW`: Vehicle onboard charger maximum power rating (3.6 kW or 7.0 kW)
+9. `sessionsToday`: Daily cumulative count of prior sessions on the same calendar date for that participant
+10. `LastDuration`: Elapsed duration in hours of immediately preceding session. For the first retained session, this is populated from the dropped preceding session (zero missingness).
+11. `LastConsumedkWh`: Active energy in kWh of immediately preceding session. For the first retained session, this is populated from the dropped preceding session (missing only if preceding energy was missing).
+12. `CarKW`: Vehicle onboard charger power rating (3.6 kW or 7.0 kW)
 13. `CarKWh`: Vehicle battery capacity (6.2 kWh to 100.0 kWh)
 
 ### Canonical Processed Dataset
@@ -132,7 +132,37 @@ All predictors are strictly evaluated at arrival time $t_0 = \text{StartTime}$:
 The pipeline produces a single canonical Parquet dataset:
 - **Location**: `data/processed/electric_nation/features.parquet`
 - **Dimensions**: Exactly **59,520 rows $\times$ 30 columns**
-- **Contents**: 9 selected raw source fields, `Duration` (capped at 336.0h), 7 day indicators (`Mon`..`Sun`), 4 calendar features, 4 start-hour features, 4 historical lag features, and integer participant `id`.
+- **Canonical Column Sequence**:
+  1. `StartTime`
+  2. `StopTime`
+  3. `ParticipantID`
+  4. `ConsumedkWh`
+  5. `CarKW`
+  6. `CarKWh`
+  7. `PluggedInTime`
+  8. `ChargingDuration`
+  9. `Hot_Unplug`
+  10. `Duration`
+  11. `weekday`
+  12. `weekend`
+  13. `holiday`
+  14. `Mon`
+  15. `Tue`
+  16. `Wed`
+  17. `Thu`
+  18. `Fri`
+  19. `Sat`
+  20. `Sun`
+  21. `month`
+  22. `StartHour`
+  23. `StartHourNorm`
+  24. `StartCos`
+  25. `StartSin`
+  26. `TimeSinceLastStop`
+  27. `sessionsToday`
+  28. `LastDuration`
+  29. `LastConsumedkWh`
+  30. `id` (integer group enumeration index from original participant grouping; non-contiguous)
 
 ---
 
@@ -140,7 +170,7 @@ The pipeline produces a single canonical Parquet dataset:
 
 ### Prerequisites
 
-- Python 3.10+ (tested on Python 3.13)
+- Python 3.10+ (tested on Python 3.11, 3.12, and 3.13)
 - Windows, macOS, or Linux
 
 ### Installation
@@ -152,6 +182,8 @@ git clone https://github.com/nayanojwal0810/Tarang.git
 cd Tarang
 pip install -e .
 ```
+
+*Note: Dependencies in `requirements.txt` specify minimum compatible versions (`>=`), not pinned versions.*
 
 ### Raw Data Setup
 
@@ -180,7 +212,7 @@ python scripts/prepare_data.py
 ```
 
 ### 3. Run Exploratory Data Analysis (EDA)
-Generates empirical summary statistics and publication-grade visualization figures in `reports/eda/`:
+Generates empirical summary statistics and visualization figures in `reports/eda/` using `Europe/London` local time for arrival hours and same-day vs. overnight classification:
 
 ```bash
 python scripts/run_eda.py
@@ -188,13 +220,13 @@ python scripts/run_eda.py
 
 Generated EDA artifacts:
 - `reports/eda/eda_summary.md`: Summary report including participant availability and charging flexibility ratios.
-- `reports/eda/data_availability.png`: 4-panel distribution of participant spans, sessions, weekly cadence, and durations.
-- `reports/eda/duration_by_start_hour.png`: 2D joint histogram of plugged-in duration vs. arrival hour (log scale).
-- `reports/eda/energy_by_start_hour.png`: 2D joint histogram of energy consumption vs. arrival hour (log scale).
+- `reports/eda/data_availability.png`: 4-panel distribution of participant spans, sessions, weekly cadence, and durations (26 bins).
+- `reports/eda/duration_by_start_hour.png`: 2D joint histogram of plugged-in duration vs. local arrival hour (0.5h bins, 72h cutoff, log scale).
+- `reports/eda/energy_by_start_hour.png`: 2D joint histogram of energy consumption vs. local arrival hour (0.5h, 0.5 kWh bins, 75 kWh cutoff, log scale).
 - `reports/eda/charging_flexibility.png`: Density distributions of flexibility ratios for same-day vs. overnight sessions.
 
 ### 4. Run Test Suite
-Run the full 56-test test suite (54 unit tests and 2 integration tests):
+Run the full 63-test test suite (61 unit tests and 2 integration tests):
 
 ```bash
 python -m pytest tests/ -v
@@ -202,18 +234,13 @@ python -m pytest tests/ -v
 
 ---
 
-## Documentation
+## System Scope and Advisory Decision Support
 
-- [`docs/architecture/project_structure.md`](docs/architecture/project_structure.md): Modular architecture, responsibilities, and future stage roadmap.
-- [`docs/data/data_contract.md`](docs/data/data_contract.md): Formal data schemas, anti-leakage constraints, and screening sequence.
-- [`docs/data/data_dictionary.md`](docs/data/data_dictionary.md): Column definitions, types, units, and ranges across raw and processed datasets.
-- [`reports/data_audit/dataset_audit_report.md`](reports/data_audit/dataset_audit_report.md): Full dataset quality audit and feasibility report.
-- [`reports/eda/eda_summary.md`](reports/eda/eda_summary.md): Statistical findings and flexibility ratios.
+TARANG provides predictive intelligence and charging behavioral insights to assist fleet managers, charge point operators, and smart grid planners. Predictions and flexibility metrics serve as **advisory decision support** for bay scheduling and demand management; TARANG does not execute automatic charger hardware dispatch or real-time grid switching control.
 
 ---
 
 ## References
 
-1. Kreft, M., Brudermueller, T., Fleisch, E., & Staake, T. (2024). Predictability of electric vehicle charging: Explaining extensive user behaviour with simple models. *Nature Communications*, 15(1), 1603. https://doi.org/10.1038/s41467-024-45899-7
-2. Electric Nation Trial Dataset: National Grid Electricity Distribution & EA Technology. https://commercial.nationalgrid.co.uk/electric-nation-data
-3. Reference Implementation: https://github.com/mkreft/predictability-of-ev-charging
+1. Kreft, M., Brudermueller, T., Fleisch, E., & Staake, T. (2024). *Predictability of electric vehicle charging: Explaining extensive user behavior-specific heterogeneity*. Applied Energy, 370, 123544. https://doi.org/10.1016/j.apenergy.2024.123544
+2. Reference Implementation: https://github.com/markus-kreft/ev-charging-prediction

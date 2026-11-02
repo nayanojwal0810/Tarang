@@ -60,14 +60,16 @@ def calculate_calendar_features(
 
     is_holiday = session_dates.isin(holiday_set)
 
-    # 7 day indicators
-    for i, name in enumerate(DAY_NAMES):
-        out[name] = (dow == i).astype(int)
-
     # Both weekday and weekend are 0 on holidays
     out["weekday"] = ((dow < 5) & (~is_holiday)).astype(int)
     out["weekend"] = ((dow >= 5) & (~is_holiday)).astype(int)
     out["holiday"] = is_holiday.astype(int)
+
+    # 7 day indicators
+    for i, name in enumerate(DAY_NAMES):
+        out[name] = (dow == i).astype(int)
+
     out["month"] = timestamps.dt.month.astype(int)
 
     return out
+

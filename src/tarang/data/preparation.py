@@ -101,3 +101,4 @@ def run_data_preparation(
         json.dump(summary_data, f, indent=4)
 
     return summary_data
+

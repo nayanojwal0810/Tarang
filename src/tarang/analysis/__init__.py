@@ -14,3 +14,4 @@ __all__ = [
     "calculate_charging_flexibility",
     "generate_eda_markdown_summary",
 ]
+

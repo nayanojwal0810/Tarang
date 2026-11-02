@@ -122,3 +122,62 @@ def test_eda_markdown_summary_generation() -> None:
     assert "# TARANG — Exploratory Data Analysis (EDA) Summary" in md
     assert "Participant Data Availability" in md
     assert "Smart-Charging Flexibility Ratio" in md
+
+
+def test_uk_local_time_winter_summer_offsets() -> None:
+    """EDA arrival hour calculation reflects Europe/London winter (GMT=UTC) and summer (BST=UTC+1) offsets."""
+    # Winter: January (GMT, offset +0)
+    winter_utc = pd.Timestamp("2017-01-15 14:00:00", tz="UTC")
+    winter_local = winter_utc.tz_convert("Europe/London")
+    assert winter_local.hour == 14
+
+    # Summer: July (BST, offset +1)
+    summer_utc = pd.Timestamp("2017-07-15 14:00:00", tz="UTC")
+    summer_local = summer_utc.tz_convert("Europe/London")
+    assert summer_local.hour == 15
+
+
+def test_half_hour_bins_for_energy_and_duration_histograms() -> None:
+    """Bivariate histograms use 0.5-hour increments for arrival time and 0.5 units for targets."""
+    # Arrival hour: 0 to 24 with 0.5h step -> 49 bin edges (48 bins)
+    x_bins = np.arange(0.0, 24.5, 0.5)
+    assert len(x_bins) == 49
+
+    # Duration: 0 to 72 with 0.5h step -> 145 bin edges (144 bins)
+    dur_bins = np.arange(0.0, 72.5, 0.5)
+    assert len(dur_bins) == 145
+
+    # Energy: 0 to 75 with 0.5 kWh step -> 151 bin edges (150 bins)
+    energy_bins = np.arange(0.0, 75.5, 0.5)
+    assert len(energy_bins) == 151
+    assert pytest.approx(energy_bins[1] - energy_bins[0]) == 0.5
+
+
+def test_population_standard_deviation_and_unrounded_participant_inputs() -> None:
+    """Availability statistics calculate population standard deviation (ddof=0) without pre-rounding."""
+    # Two participants with different durations
+    df = pd.DataFrame({
+        "id": [0, 0, 1, 1],
+        "StartTime": [
+            pd.Timestamp("2017-05-01 10:00:00", tz="UTC"),
+            pd.Timestamp("2017-05-02 10:00:00", tz="UTC"),
+            pd.Timestamp("2017-05-01 10:00:00", tz="UTC"),
+            pd.Timestamp("2017-05-02 10:00:00", tz="UTC"),
+        ],
+        "StopTime": [
+            pd.Timestamp("2017-05-01 12:00:00", tz="UTC"),  # 2.0h
+            pd.Timestamp("2017-05-02 15:00:00", tz="UTC"),  # 5.0h -> pid 0 mean = 3.5h
+            pd.Timestamp("2017-05-01 18:00:00", tz="UTC"),  # 8.0h
+            pd.Timestamp("2017-05-02 20:00:00", tz="UTC"),  # 10.0h -> pid 1 mean = 9.0h
+        ],
+    })
+    summary_df, agg_stats = calculate_data_availability(df)
+    assert len(summary_df) == 2
+
+    # Participant means: 3.5 and 9.0
+    # Mean of means: (3.5 + 9.0) / 2 = 6.25
+    # Population std: sqrt(((3.5 - 6.25)^2 + (9.0 - 6.25)^2) / 2) = sqrt((7.5625 + 7.5625) / 2) = 2.75
+    # Sample std would be: sqrt(15.125 / 1) = 3.889
+    assert pytest.approx(agg_stats["mean_duration_hours"]["mean"], abs=1e-4) == 6.25
+    assert pytest.approx(agg_stats["mean_duration_hours"]["std"], abs=1e-4) == 2.75  # Population std!
+

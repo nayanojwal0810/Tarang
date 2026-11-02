@@ -36,13 +36,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# Build and packaging
+*.egg-info/
+build/
+dist/
+
 # Temporary and scratch files
 *.tmp
 *.temp
 scratch/
-
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-*.egg

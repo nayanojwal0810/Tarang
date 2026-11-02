@@ -2,8 +2,8 @@
 
 Provides clean, publication-grade plotting functions for:
 1. Participant data availability (4-panel distribution).
-2. 2D arrival hour vs duration joint histogram with marginals.
-3. 2D arrival hour vs energy joint histogram with marginals.
+2. 2D arrival hour vs duration joint histogram with marginals (0.5h bins, Europe/London).
+3. 2D arrival hour vs energy joint histogram with marginals (0.5h, 0.5 kWh bins, Europe/London).
 4. Smart-charging flexibility ratio (same-day vs overnight).
 """
 
@@ -48,13 +48,13 @@ def plot_data_availability(
     availability_df: pd.DataFrame,
     output_path: Union[str, Path],
 ) -> Path:
-    """Generate 4-panel participant data availability figure.
+    """Generate 4-panel participant data availability figure with 26-bin distributions.
 
     Subplots:
-    1. Observation span in days
-    2. Sessions per participant
-    3. Weekly session frequency (sessions/week)
-    4. Mean plugged-in session duration (hours)
+    1. Observation span in days (26 bins)
+    2. Sessions per participant (26 bins)
+    3. Weekly session frequency (26 bins)
+    4. Mean plugged-in session duration (26 bins over [0, 72] hours)
 
     Args:
         availability_df: DataFrame from calculate_data_availability.
@@ -70,36 +70,41 @@ def plot_data_availability(
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.patch.set_facecolor("white")
 
-    # Panel 1: Observation Span
+    # Panel 1: Observation Span (26 bins)
     ax = axes[0, 0]
-    ax.hist(availability_df["span_days"], bins=25, color=COLOR_PRIMARY, edgecolor="white", alpha=0.85)
-    ax.set_title("Observation Span per Participant", fontsize=12, fontweight="bold", pad=10)
-    ax.set_xlabel("Observation Period (Days)", fontsize=10)
-    ax.set_ylabel("Number of Participants", fontsize=10)
+    ax.hist(availability_df["span_days"], bins=26, color=COLOR_PRIMARY, edgecolor="white", alpha=0.85)
+    ax.set_title("(a) Observation Span per Participant", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Data Availability Span (Days)", fontsize=10)
+    ax.set_ylabel("Vehicles", fontsize=10)
+    ax.set_xlim(0, None)
     ax.grid(True)
 
-    # Panel 2: Sessions per Participant
+    # Panel 2: Sessions per Participant (26 bins)
     ax = axes[0, 1]
-    ax.hist(availability_df["session_count"], bins=25, color=COLOR_SECONDARY, edgecolor="white", alpha=0.85)
-    ax.set_title("Total Sessions per Participant", fontsize=12, fontweight="bold", pad=10)
-    ax.set_xlabel("Number of Sessions", fontsize=10)
-    ax.set_ylabel("Number of Participants", fontsize=10)
+    ax.hist(availability_df["session_count"], bins=26, color=COLOR_SECONDARY, edgecolor="white", alpha=0.85)
+    ax.set_title("(b) Total Sessions per Participant", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Sessions", fontsize=10)
+    ax.set_ylabel("Vehicles", fontsize=10)
+    ax.set_xlim(0, None)
     ax.grid(True)
 
-    # Panel 3: Weekly Frequency
+    # Panel 3: Weekly Frequency (26 bins)
     ax = axes[1, 0]
-    ax.hist(availability_df["weekly_frequency"], bins=25, color=COLOR_ACCENT, edgecolor="white", alpha=0.85)
-    ax.set_title("Weekly Session Frequency", fontsize=12, fontweight="bold", pad=10)
-    ax.set_xlabel("Average Sessions per Week", fontsize=10)
-    ax.set_ylabel("Number of Participants", fontsize=10)
+    ax.hist(availability_df["weekly_frequency"], bins=26, color=COLOR_ACCENT, edgecolor="white", alpha=0.85)
+    ax.set_title("(c) Mean Weekly Sessions", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Mean Weekly Sessions", fontsize=10)
+    ax.set_ylabel("Vehicles", fontsize=10)
+    ax.set_xlim(0, None)
     ax.grid(True)
 
-    # Panel 4: Mean Session Duration
+    # Panel 4: Mean Session Duration (26 bins on [0, 72] hours)
     ax = axes[1, 1]
-    ax.hist(availability_df["mean_duration_hours"], bins=25, color="#6366F1", edgecolor="white", alpha=0.85)
-    ax.set_title("Mean Plugged-In Duration", fontsize=12, fontweight="bold", pad=10)
-    ax.set_xlabel("Mean Duration (Hours)", fontsize=10)
-    ax.set_ylabel("Number of Participants", fontsize=10)
+    duration_bins = np.linspace(0.0, 72.0, 26)
+    ax.hist(availability_df["mean_duration_hours"], bins=duration_bins, color="#6366F1", edgecolor="white", alpha=0.85)
+    ax.set_title("(d) Mean Session Duration", fontsize=12, fontweight="bold", pad=10)
+    ax.set_xlabel("Mean Session Duration (Hours)", fontsize=10)
+    ax.set_ylabel("Vehicles", fontsize=10)
+    ax.set_xlim(0, None)
     ax.grid(True)
 
     plt.tight_layout()
@@ -114,7 +119,10 @@ def plot_duration_by_start_hour(
     output_path: Union[str, Path],
     max_duration: float = 72.0,
 ) -> Path:
-    """Generate 2D duration vs arrival hour joint histogram with marginals.
+    """Generate 2D duration vs local arrival hour joint histogram with marginals.
+
+    Converts timestamps to Europe/London local time for arrival hour calculation.
+    Uses half-hour bins for arrival hour [0, 24] and duration [0, 72].
 
     Args:
         df: Canonical features DataFrame.
@@ -128,18 +136,18 @@ def plot_duration_by_start_hour(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Compute continuous start hour and raw duration
-    start_ts = pd.to_datetime(df["StartTime"])
-    stop_ts = pd.to_datetime(df["StopTime"])
-    start_hours = start_ts.dt.hour + start_ts.dt.minute / 60.0 + start_ts.dt.second / 3600.0
-    durations = (stop_ts - start_ts).dt.total_seconds() / 3600.0
+    # Local UK time conversion (Europe/London) for EDA arrival hour
+    start_local = pd.to_datetime(df["StartTime"]).dt.tz_convert("Europe/London")
+    stop_local = pd.to_datetime(df["StopTime"]).dt.tz_convert("Europe/London")
 
-    # Filter to display cutoff range
-    mask = (durations >= 0) & (durations <= max_duration) & (start_hours >= 0) & (start_hours < 24)
+    start_hours = start_local.dt.hour + start_local.dt.minute / 60.0 + start_local.dt.second / 3600.0
+    durations = (stop_local - start_local).dt.total_seconds() / 3600.0
+
+    mask = (durations >= 0) & (durations <= max_duration) & (start_hours >= 0) & (start_hours <= 24)
     x = start_hours[mask]
     y = durations[mask]
 
-    # Setup bins: 0.5h for start hour (48 bins), 0.5h for duration (144 bins)
+    # Setup bins: 0.5h for start hour, 0.5h for duration up to cutoff
     x_bins = np.arange(0.0, 24.5, 0.5)
     y_bins = np.arange(0.0, max_duration + 0.5, 0.5)
 
@@ -151,30 +159,31 @@ def plot_duration_by_start_hour(
     ax_top = fig.add_subplot(gs[0, 0:3], sharex=ax_main)
     ax_right = fig.add_subplot(gs[1:4, 3], sharey=ax_main)
 
-    # 2D Histogram with logarithmic count normalization
-    h, _, _, im = ax_main.hist2d(
+    ax_main.hist2d(
         x, y,
         bins=[x_bins, y_bins],
         cmap="viridis",
-        norm=mcolors.LogNorm(vmin=1),
-        cmin=1,
+        norm=mcolors.LogNorm(clip=True),
     )
-    ax_main.set_xlabel("Session Start Time (Hour of Day, UTC)", fontsize=11)
-    ax_main.set_ylabel("Plugged-In Duration (Hours)", fontsize=11)
+    ax_main.set_xlabel("Start Hour (Local Time, Europe/London)", fontsize=11)
+    ax_main.set_ylabel("Duration (Hours)", fontsize=11)
+    ax_main.set_xlim(0, 24)
+    ax_main.set_ylim(0, max_duration)
     ax_main.set_xticks(range(0, 25, 4))
     ax_main.grid(True, alpha=0.3)
 
     # Top marginal (Start Hour)
     ax_top.hist(x, bins=x_bins, color=COLOR_PRIMARY, edgecolor="white", alpha=0.85)
     ax_top.tick_params(axis="x", labelbottom=False)
-    ax_top.set_ylabel("Count", fontsize=9)
+    ax_top.set_ylabel("Sessions", fontsize=9)
     ax_top.grid(True, alpha=0.3)
-    ax_top.set_title("Plugged-In Duration by Session Arrival Hour", fontsize=12, fontweight="bold", pad=12)
+    ax_top.set_title("Plugged-In Duration by Local Arrival Hour", fontsize=12, fontweight="bold", pad=12)
 
     # Right marginal (Duration)
     ax_right.hist(y, bins=y_bins, orientation="horizontal", color=COLOR_SECONDARY, edgecolor="white", alpha=0.85)
     ax_right.tick_params(axis="y", labelleft=False)
-    ax_right.set_xlabel("Count", fontsize=9)
+    ax_right.set_xlabel("Sessions", fontsize=9)
+    ax_right.set_xscale("log")
     ax_right.grid(True, alpha=0.3)
 
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -188,7 +197,10 @@ def plot_energy_by_start_hour(
     output_path: Union[str, Path],
     max_energy: float = 75.0,
 ) -> Path:
-    """Generate 2D consumed energy vs arrival hour joint histogram with marginals.
+    """Generate 2D consumed energy vs local arrival hour joint histogram with marginals.
+
+    Converts timestamps to Europe/London local time for arrival hour calculation.
+    Uses half-hour bins for arrival hour [0, 24] and 0.5-kWh bins for energy [0, 75].
 
     Args:
         df: Canonical features DataFrame.
@@ -202,16 +214,17 @@ def plot_energy_by_start_hour(
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    start_ts = pd.to_datetime(df["StartTime"])
-    start_hours = start_ts.dt.hour + start_ts.dt.minute / 60.0 + start_ts.dt.second / 3600.0
+    start_local = pd.to_datetime(df["StartTime"]).dt.tz_convert("Europe/London")
+    start_hours = start_local.dt.hour + start_local.dt.minute / 60.0 + start_local.dt.second / 3600.0
     energy = pd.to_numeric(df["ConsumedkWh"], errors="coerce")
 
-    mask = energy.notnull() & (energy >= 0) & (energy <= max_energy) & (start_hours >= 0) & (start_hours < 24)
+    mask = energy.notnull() & (energy >= 0) & (energy <= max_energy) & (start_hours >= 0) & (start_hours <= 24)
     x = start_hours[mask]
     y = energy[mask]
 
+    # Half-hour bins for arrival time, 0.5-kWh bins for energy
     x_bins = np.arange(0.0, 24.5, 0.5)
-    y_bins = np.arange(0.0, max_energy + 1.0, 1.0)
+    y_bins = np.arange(0.0, max_energy + 0.5, 0.5)
 
     fig = plt.figure(figsize=(10, 8))
     fig.patch.set_facecolor("white")
@@ -225,25 +238,27 @@ def plot_energy_by_start_hour(
         x, y,
         bins=[x_bins, y_bins],
         cmap="plasma",
-        norm=mcolors.LogNorm(vmin=1),
-        cmin=1,
+        norm=mcolors.LogNorm(clip=True),
     )
-    ax_main.set_xlabel("Session Start Time (Hour of Day, UTC)", fontsize=11)
-    ax_main.set_ylabel("Energy Consumed (kWh)", fontsize=11)
+    ax_main.set_xlabel("Start Hour (Local Time, Europe/London)", fontsize=11)
+    ax_main.set_ylabel("Energy (kWh)", fontsize=11)
+    ax_main.set_xlim(0, 24)
+    ax_main.set_ylim(0, max_energy)
     ax_main.set_xticks(range(0, 25, 4))
     ax_main.grid(True, alpha=0.3)
 
     # Top marginal
     ax_top.hist(x, bins=x_bins, color=COLOR_PRIMARY, edgecolor="white", alpha=0.85)
     ax_top.tick_params(axis="x", labelbottom=False)
-    ax_top.set_ylabel("Count", fontsize=9)
+    ax_top.set_ylabel("Sessions", fontsize=9)
     ax_top.grid(True, alpha=0.3)
-    ax_top.set_title("Energy Consumption by Session Arrival Hour", fontsize=12, fontweight="bold", pad=12)
+    ax_top.set_title("Energy Consumption by Local Arrival Hour", fontsize=12, fontweight="bold", pad=12)
 
     # Right marginal
     ax_right.hist(y, bins=y_bins, orientation="horizontal", color=COLOR_ACCENT, edgecolor="white", alpha=0.85)
     ax_right.tick_params(axis="y", labelleft=False)
-    ax_right.set_xlabel("Count", fontsize=9)
+    ax_right.set_xlabel("Sessions", fontsize=9)
+    ax_right.set_xscale("log")
     ax_right.grid(True, alpha=0.3)
 
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -257,6 +272,8 @@ def plot_charging_flexibility(
     output_path: Union[str, Path],
 ) -> Path:
     """Generate smart-charging flexibility ratio distribution comparing same-day vs overnight sessions.
+
+    Uses 25-bin histogram across [0.0, 1.0] normalized to percentage PMF.
 
     Args:
         flexibility_data: Dictionary output from calculate_charging_flexibility.
@@ -279,12 +296,14 @@ def plot_charging_flexibility(
     fig, ax = plt.subplots(figsize=(10, 6))
     fig.patch.set_facecolor("white")
 
-    # Plot side-by-side or overlaid bars
     w = bin_width * 0.42
+    n_same = flexibility_data.get("same_day_in_range", flexibility_data.get("same_day_count", 0))
+    n_over = flexibility_data.get("overnight_in_range", flexibility_data.get("overnight_count", 0))
+
     ax.bar(
         bin_centers - w / 2, same_pct,
         width=w,
-        label=f"Same-Day Sessions (n={flexibility_data['same_day_count']:,})",
+        label=f"Same-Day Sessions (n={n_same:,})",
         color=COLOR_PRIMARY,
         alpha=0.85,
         edgecolor="white",
@@ -292,7 +311,7 @@ def plot_charging_flexibility(
     ax.bar(
         bin_centers + w / 2, over_pct,
         width=w,
-        label=f"Overnight Sessions (n={flexibility_data['overnight_count']:,})",
+        label=f"Overnight Sessions (n={n_over:,})",
         color=COLOR_SECONDARY,
         alpha=0.85,
         edgecolor="white",
@@ -300,14 +319,10 @@ def plot_charging_flexibility(
 
     ax.set_title("Smart-Charging Flexibility Ratio: Active Charging Duration / Plugged-In Duration", fontsize=12, fontweight="bold", pad=12)
     ax.set_xlabel("Flexibility Ratio (Charging Duration / Plugged-In Duration)", fontsize=10)
-    ax.set_ylabel("Share of Sessions (%)", fontsize=10)
+    ax.set_ylabel("Probability Mass Function (%)", fontsize=10)
     ax.set_xlim(-0.02, 1.02)
     ax.legend(frameon=True, facecolor="white", edgecolor="#CBD5E1", fontsize=10)
     ax.grid(True, alpha=0.4)
-
-    # Annotate high flexibility vs low flexibility regions
-    ax.text(0.12, ax.get_ylim()[1] * 0.88, "High Flexibility\n(Long Idle Window)", ha="center", fontsize=9, color=COLOR_MUTED, fontstyle="italic")
-    ax.text(0.88, ax.get_ylim()[1] * 0.88, "Low Flexibility\n(Continuous Charge)", ha="center", fontsize=9, color=COLOR_MUTED, fontstyle="italic")
 
     plt.tight_layout()
     fig.savefig(path, dpi=300, bbox_inches="tight")

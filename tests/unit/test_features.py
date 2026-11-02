@@ -85,23 +85,50 @@ def test_14_17_binary_weekday_weekend_and_seven_day_indicators() -> None:
 
 
 def test_15_16_exact_13_holidays_and_override() -> None:
-    """Exact 13 holidays are recognized, setting holiday=1 and overriding BOTH weekday and weekend to 0."""
-    assert len(UK_BANK_HOLIDAYS_REFERENCE) == 13
+    """Exact 13 holidays are recognized, setting holiday=1 and overriding BOTH weekday and weekend to 0.
 
-    # Test Good Friday (2017-04-14) - would otherwise be Friday weekday
-    # Test Easter Monday (2018-04-02) - would otherwise be Monday weekday
-    df = pd.DataFrame({
-        "StartTime": [
-            pd.Timestamp("2017-04-14 10:00:00"),
-            pd.Timestamp("2018-04-02 12:00:00"),
-        ]
-    })
-    out = calculate_calendar_features(df)
+    Also tests dates that must NOT be treated as holidays (e.g. Easter Monday and August bank holidays).
+    """
+    expected_holidays = {
+        pd.Timestamp("2017-01-01").date(),
+        pd.Timestamp("2017-01-02").date(),
+        pd.Timestamp("2017-04-14").date(),
+        pd.Timestamp("2017-05-01").date(),
+        pd.Timestamp("2017-05-29").date(),
+        pd.Timestamp("2017-12-25").date(),
+        pd.Timestamp("2017-12-26").date(),
+        pd.Timestamp("2018-01-01").date(),
+        pd.Timestamp("2018-03-30").date(),
+        pd.Timestamp("2018-05-07").date(),
+        pd.Timestamp("2018-05-28").date(),
+        pd.Timestamp("2018-12-25").date(),
+        pd.Timestamp("2018-12-26").date(),
+    }
+    assert UK_BANK_HOLIDAYS_REFERENCE == expected_holidays
 
-    for i in range(len(df)):
-        assert out.loc[i, "holiday"] == 1
-        assert out.loc[i, "weekday"] == 0
-        assert out.loc[i, "weekend"] == 0
+    # Dates that must NOT be treated as holidays in the established benchmark
+    non_holidays = [
+        pd.Timestamp("2017-04-17 12:00:00"),  # Easter Monday 2017
+        pd.Timestamp("2017-08-28 12:00:00"),  # Summer Bank Holiday 2017
+        pd.Timestamp("2018-04-02 12:00:00"),  # Easter Monday 2018
+        pd.Timestamp("2018-08-27 12:00:00"),  # Summer Bank Holiday 2018
+    ]
+    df_non = pd.DataFrame({"StartTime": non_holidays})
+    out_non = calculate_calendar_features(df_non)
+    assert (out_non["holiday"] == 0).all()
+    # All are Mondays, so weekday must be 1, weekend must be 0
+    assert (out_non["weekday"] == 1).all()
+    assert (out_non["weekend"] == 0).all()
+
+    # All 13 designated holidays
+    all_holidays = [pd.Timestamp(f"{d} 10:00:00") for d in sorted(expected_holidays)]
+    df_hol = pd.DataFrame({"StartTime": all_holidays})
+    out_hol = calculate_calendar_features(df_hol)
+
+    assert (out_hol["holiday"] == 1).all()
+    # On holidays, both weekday and weekend must be overridden to 0
+    assert (out_hol["weekday"] == 0).all()
+    assert (out_hol["weekend"] == 0).all()
 
 
 def test_18_starthour_includes_seconds() -> None:
@@ -205,3 +232,4 @@ def test_extract_features_enforces_exact_13_columns() -> None:
     with pytest.raises(ValueError) as exc_info:
         extract_features(df_missing)
     assert "StartCos" in str(exc_info.value)
+

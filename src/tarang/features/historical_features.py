@@ -44,7 +44,8 @@ def calculate_sessions_today(
 ) -> pd.Series:
     """Calculate running count of sessions started on the same date for a single participant.
 
-    Formula: cumcount() grouped by calendar date.
+    Follows established consecutive-date cumulative-count behavior:
+    tmp.groupby((tmp != tmp.shift()).cumsum()).cumcount()
 
     Args:
         df_participant: Chronologically sorted DataFrame for a single participant.
@@ -56,8 +57,8 @@ def calculate_sessions_today(
     if df_participant.empty:
         return pd.Series(dtype=int)
 
-    dates = pd.to_datetime(df_participant[time_col]).dt.date
-    return df_participant.groupby(dates).cumcount()
+    tmp = pd.to_datetime(df_participant[time_col]).dt.date
+    return tmp.groupby((tmp != tmp.shift()).cumsum()).cumcount()
 
 
 def calculate_last_duration(
@@ -103,3 +104,4 @@ def calculate_last_consumed_kwh(
         return pd.Series(dtype=float)
 
     return df_participant[energy_col].shift(1)
+

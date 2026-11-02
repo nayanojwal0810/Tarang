@@ -116,3 +116,4 @@ def inspect_workbook_metadata(filepath: Union[str, Path]) -> Dict[str, Any]:
         "sheet_names": list(sheet_info.keys()),
         "sheet_dimensions": sheet_info,
     }
+

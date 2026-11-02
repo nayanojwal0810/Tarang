@@ -130,10 +130,10 @@ The planned modeling population screening was executed in strict order:
 
 | Step | Action | Filter / Rule Applied | Participants | Sessions |
 | :---: | :--- | :--- | ---:| ---:|
-| 1 | Baseline Population | Valid ParticipantID and valid timestamps | 300 | 67,365 |
-| 2 | Exclude Trial 3 | `Trial != 3.0` | 300 | 61,242 |
-| 3 | Duration Filter | `dur_min >= 5.0` | 299 | 60,733 |
-| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | 299 | 60,733 |
+| 1 | Baseline Population | Valid ParticipantID and valid timestamps | 300 | 71,264 |
+| 2 | Exclude Trial 3 | `Trial != 3.0` | 300 | 65,141 |
+| 3 | Duration Filter | `dur_min >= 5.0` | 299 | 64,630 |
+| 4 | Chronological Sort | Sort by `[ParticipantID, StartTime, StopTime]` | 299 | 64,630 |
 | 5 | Overlap Removal | Remove negative-gap overlap records | 299 | 60,601 |
 | 6 | Drop First Session | Lag initialization (drop unlagged first session) | 298 | 60,302 |
 | 7 | Minimum History Filter | Retain participants with $\ge 10$ retained sessions | 287 | 60,246 |

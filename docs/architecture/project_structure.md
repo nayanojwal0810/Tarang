@@ -88,7 +88,7 @@ Tarang/
 |
 |-- tests/
 |   |-- __init__.py
-|   |-- unit/                        # Fast, isolated unit test suite (54 tests)
+|   |-- unit/                        # Fast, isolated unit test suite (61 tests)
 |   |   |-- test_audit.py
 |   |   |-- test_loading.py
 |   |   |-- test_screening.py
@@ -100,7 +100,7 @@ Tarang/
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
 |-- pytest.ini                       # Test configuration
-|-- requirements.txt                 # Pinned dependencies
+|-- requirements.txt                 # Lower-bounded dependencies
 |-- README.md
 ```
 
@@ -123,22 +123,23 @@ Tarang/
   2. Retention of 9 primary source fields.
   3. Duration calculation (`StopTime - StartTime`) and short-session exclusion ($< 5$ min).
   4. Duration capping at 336.0 hours (preserving unmodified `StopTime`).
-  5. Continuous StartHour and cyclical encoding.
+  5. Continuous StartHour, StartHourNorm, and cyclical encoding (StartCos, StartSin) over the entire filtered population (including null participant records).
   6. Per-participant sequential sorting and `TimeSinceLastStop` negative-gap filtering without gap recalculation.
   7. Drop first session per participant.
   8. Minimum history filtering ($\ge 10$ retained sessions).
   9. Observation density rule ($\text{sessions} \ge \text{observation\_days} / 7.0$).
-  10. Lag calculations (`sessionsToday`, `LastDuration`, `LastConsumedkWh`) and integer participant `id` assignment.
+  10. Participant integer `id` assignment from source group enumeration index (`i` in `enumerate(groupby("ParticipantID", sort=True))`), preserving non-contiguous IDs ($1 \dots 298$).
+  11. Lag calculations: `sessionsToday` via consecutive-date cumulative counts; `LastDuration` and `LastConsumedkWh` assigned from pre-drop participant history (`dfp.shift(1)[1:]`) so the first retained session receives the dropped preceding session's values.
 - **`preparation.py`**: High-level runner that executes screening, validates canonical schema, and persists `features.parquet` (59,520 sessions, 267 participants, 30 columns) and `processing_summary.json`.
 - **`audit_reporting.py`**: Formats and exports audit metrics into Markdown (`dataset_audit_report.md`) and CSV summaries.
 - **`audit.py` & `preprocessing.py`**: Re-export facades maintaining seamless backward compatibility for existing code and imports.
 
 ### 3.3 `tarang.features`
-- **`calendar_features.py`**: Implements UK England & Wales Bank Holiday calendar lookup (13 statutory holidays across 2017–2018), weekend override (`holiday` sets `weekend=1` and `weekday=0`), and 7 binary day-of-week indicators (`Mon` through `Sun`).
+- **`calendar_features.py`**: Implements UK Bank Holiday calendar lookup (exact 13 trial holidays across 2017–2018), holiday override (on holidays both `weekend=0` and `weekday=0`), and 7 binary day-of-week indicators (`Mon` through `Sun`).
 - **`time_features.py`**: Computes continuous `StartHour` including fractional minutes and seconds, dataset-wide max normalization (`StartHourNorm`), and periodic trigonometric encodings (`StartCos`, `StartSin`).
 - **`historical_features.py`**: Implements lag variables:
   - `TimeSinceLastStop`: Elapsed hours since immediately preceding session stop time.
-  - `sessionsToday`: Daily cumulative count of prior sessions on the same calendar date.
+  - `sessionsToday`: Daily cumulative count of prior sessions on consecutive dates.
   - `LastDuration`: Elapsed duration in hours of immediately preceding session.
   - `LastConsumedkWh`: Metered energy of immediately preceding session.
 - **`feature_engineering.py`**: Authoritative specification of `FEATURE_NAMES` and feature extraction utilities.
@@ -168,24 +169,28 @@ flowchart TD
         CanonicalParquet --> EDA["Descriptive EDA &\nFlexibility Analysis"]
     end
 
-    subgraph Stage2["Stage 2: Benchmark Regression Modeling (Planned)"]
-        CanonicalParquet --> Split["Temporal & Group-Aware\nEvaluation Splits"]
-        Split --> Baselines["Baseline Models\n(Historical Mean, Median, Last)"]
-        Split --> Regressors["Dual-Target Regressors\n(Ridge, Quantile, HistGBM)"]
-        Regressors --> Eval["Performance Benchmarks\n(MAE, RMSE, Pinball Loss)"]
+    subgraph Stage2["Stage 2: Benchmark Predictive Modeling (Planned)"]
+        CanonicalParquet --> Split["Evaluation Data Splits"]
+        Split --> Baselines["Baseline Models"]
+        Split --> Regressors["Dual-Target Regressors\n(Duration & Energy)"]
+        Regressors --> Eval["Performance Evaluation\n& Benchmarking"]
     end
 
     subgraph Stage3["Stage 3: Explainability & Decision Support (Planned)"]
-        Regressors --> SHAP["SHAP Attribution &\nBehavioral Clustering"]
-        Regressors --> SmartCharge["Smart Charging Optimization\n(V1G Scheduling & Bay Planning)"]
-        SmartCharge --> StreamlitUI["Interactive Streamlit\nDecision Application"]
+        Regressors --> Explainability["Model Explainability &\nFeature Importance"]
+        Regressors --> DecisionSupport["Advisory Decision Support\n(Flexibility & Bay Planning)"]
+        DecisionSupport --> UserInterface["Interactive User Interface"]
     end
 ```
 
 1. **Stage 2 — Predictive Modeling**:
-   - `tarang.models`: Regressors for `Duration` and `ConsumedkWh` (linear baselines, gradient boosting, quantile regression).
-   - `tarang.evaluation`: Temporal holdout and participant group-aware cross-validation metrics.
+   - `tarang.models`: Predictive regressors for plugged-in duration and energy consumption.
+   - `tarang.evaluation`: Evaluation splits and standard regression performance metrics.
 2. **Stage 3 — Explainability & Decision Support**:
-   - `tarang.explainability`: TreeSHAP and global/local feature importance.
-   - `tarang.optimization`: Unmanaged vs. tariff-optimized smart charging scheduling simulation.
-   - `tarang.app`: Streamlit interactive dashboard.
+   - `tarang.explainability`: Global and local feature attribution and behavior explanation.
+   - `tarang.decision_support`: Advisory analytics for charging flexibility, bay planning, and demand shifting.
+   - `tarang.app`: User interface for interactive exploration and scenario analysis.
+
+> [!NOTE]
+> TARANG's predictions and flexibility insights provide **advisory decision support**. The system does not perform automated charger hardware actuation or live grid switching.
+

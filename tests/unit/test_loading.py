@@ -62,3 +62,4 @@ def test_05_validate_canonical_dataset_schema_missing_raises_error() -> None:
     with pytest.raises(ValueError) as exc_info:
         validate_canonical_dataset_schema(df_incomplete)
     assert "Canonical Processed Features Dataset" in str(exc_info.value)
+

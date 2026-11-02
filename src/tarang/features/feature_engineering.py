@@ -55,3 +55,4 @@ def extract_features(df: pd.DataFrame) -> pd.DataFrame:
             f"Available columns: {list(df.columns)}"
         )
     return df[FEATURE_NAMES].copy()
+

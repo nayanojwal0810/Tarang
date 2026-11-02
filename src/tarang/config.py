@@ -108,6 +108,9 @@ CANONICAL_COLUMNS: List[str] = [
     "ChargingDuration",
     "Hot_Unplug",
     "Duration",
+    "weekday",
+    "weekend",
+    "holiday",
     "Mon",
     "Tue",
     "Wed",
@@ -115,9 +118,6 @@ CANONICAL_COLUMNS: List[str] = [
     "Fri",
     "Sat",
     "Sun",
-    "weekday",
-    "weekend",
-    "holiday",
     "month",
     "StartHour",
     "StartHourNorm",
@@ -134,24 +134,25 @@ CANONICAL_COLUMNS: List[str] = [
 # Calendar and Reference Constants
 # ==============================================================================
 
-# 13 UK Bank Holidays across the trial window (England and Wales)
+# Exact 13 UK Bank Holidays used in established benchmark (2017-2018)
 UK_BANK_HOLIDAYS_REFERENCE: Set = {
+    pd.Timestamp("2017-01-01").date(),  # New Year's Day 2017
+    pd.Timestamp("2017-01-02").date(),  # New Year's Day observed 2017
     pd.Timestamp("2017-04-14").date(),  # Good Friday 2017
-    pd.Timestamp("2017-04-17").date(),  # Easter Monday 2017
-    pd.Timestamp("2017-05-01").date(),  # Early May bank holiday 2017
-    pd.Timestamp("2017-05-29").date(),  # Spring bank holiday 2017
-    pd.Timestamp("2017-08-28").date(),  # Summer bank holiday 2017
+    pd.Timestamp("2017-05-01").date(),  # Early May Bank Holiday 2017
+    pd.Timestamp("2017-05-29").date(),  # Spring Bank Holiday 2017
     pd.Timestamp("2017-12-25").date(),  # Christmas Day 2017
     pd.Timestamp("2017-12-26").date(),  # Boxing Day 2017
     pd.Timestamp("2018-01-01").date(),  # New Year's Day 2018
     pd.Timestamp("2018-03-30").date(),  # Good Friday 2018
-    pd.Timestamp("2018-04-02").date(),  # Easter Monday 2018
-    pd.Timestamp("2018-05-07").date(),  # Early May bank holiday 2018
-    pd.Timestamp("2018-05-28").date(),  # Spring bank holiday 2018
-    pd.Timestamp("2018-08-27").date(),  # Summer bank holiday 2018
+    pd.Timestamp("2018-05-07").date(),  # Early May Bank Holiday 2018
+    pd.Timestamp("2018-05-28").date(),  # Spring Bank Holiday 2018
+    pd.Timestamp("2018-12-25").date(),  # Christmas Day 2018
+    pd.Timestamp("2018-12-26").date(),  # Boxing Day 2018
 }
 
 # Screening parameters
 MIN_DURATION_HOURS: float = 5.0 / 60.0  # 5 minutes
 MAX_DURATION_HOURS: float = 336.0        # 14 days cap
 MIN_RETAINED_SESSIONS: int = 10          # History threshold
+

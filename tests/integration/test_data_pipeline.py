@@ -37,8 +37,9 @@ def test_32_33_parquet_schema_and_round_trip(tmp_path: Path) -> None:
     data["Hot_Unplug"] = [False]
     data["id"] = [0]
     data["sessionsToday"] = [0]
-    data["LastDuration"] = [np.nan]  # Null preservation check
-    data["LastConsumedkWh"] = [np.nan]
+    data["LastDuration"] = [2.5]
+    data["LastConsumedkWh"] = [10.0]
+    data["ChargingDuration"] = [np.nan]  # Null preservation check
 
     df_orig = pd.DataFrame(data)[CANONICAL_COLUMNS]
     parquet_path = tmp_path / "test_features.parquet"
@@ -51,8 +52,9 @@ def test_32_33_parquet_schema_and_round_trip(tmp_path: Path) -> None:
 
     # Schema, order, and nulls preserved
     assert list(df_read.columns) == CANONICAL_COLUMNS
-    assert pd.isna(df_read["LastDuration"].iloc[0])
-    assert pd.isna(df_read["LastConsumedkWh"].iloc[0])
+    assert df_read["LastDuration"].iloc[0] == 2.5
+    assert df_read["LastConsumedkWh"].iloc[0] == 10.0
+    assert pd.isna(df_read["ChargingDuration"].iloc[0])
     pd.testing.assert_frame_equal(df_orig, df_read)
 
 

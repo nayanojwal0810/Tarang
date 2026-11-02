@@ -68,9 +68,9 @@ def screen_and_prepare_dataset(
         empty_df = pd.DataFrame(columns=CANONICAL_COLUMNS)
         return empty_df, empty_metrics
 
-    # Parse timestamps safely and check initial validity
+    # Parse timestamps safely and check initial validity (preserve null ParticipantID for global time normalization)
     start_utc, stop_utc, _ = parse_utc_timestamps(df_tx, "StartTime", "StopTime")
-    valid_ts_mask = df_tx["ParticipantID"].notna() & start_utc.notna() & stop_utc.notna()
+    valid_ts_mask = start_utc.notna() & stop_utc.notna()
     initial_valid = int(valid_ts_mask.sum())
 
     df_p = df_tx[valid_ts_mask].copy()
@@ -135,11 +135,7 @@ def screen_and_prepare_dataset(
     )
 
     # Step 8: Per-participant processing
-    unique_pids = sorted(df_valid["ParticipantID"].dropna().unique())
-    pids_before_grouping = len(unique_pids)
-
     retained_participant_dfs: List[pd.DataFrame] = []
-    int_id = 0
 
     negative_gaps_removed = 0
     sessions_after_neg_gap = 0
@@ -157,65 +153,72 @@ def screen_and_prepare_dataset(
     retained_spws = []
     retained_intervals = []
 
-    for pid in unique_pids:
-        pdf = df_valid[df_valid["ParticipantID"] == pid].sort_values(by="StartTime").copy()
+    pids_before_grouping = df_valid["ParticipantID"].dropna().nunique()
+
+    for i, (pid, dfp) in enumerate(df_valid.groupby("ParticipantID", sort=True)):
+        dfp = dfp.sort_values(by="StartTime").copy().reset_index(drop=True)
 
         # Immediate preceding session stop gap
-        pdf["TimeSinceLastStop"] = calculate_time_since_last_stop(pdf)
+        TimeSinceLastStop = (dfp["StartTime"] - dfp["StopTime"].shift(1)).dt.total_seconds() / 3600.0
+        dfp["TimeSinceLastStop"] = TimeSinceLastStop
 
         # Discard records with negative gap without recalculating subsequent gaps
-        neg_mask = pdf["TimeSinceLastStop"] < 0
+        neg_mask = dfp["TimeSinceLastStop"] < 0
         neg_count = int(neg_mask.sum())
-        negative_gaps_removed += neg_count
-        pdf = pdf[~neg_mask].copy()
-        sessions_after_neg_gap += len(pdf)
+        if neg_count != 0:
+            negative_gaps_removed += neg_count
+            dfp = dfp[~neg_mask]
+
+        sessions_after_neg_gap += len(dfp)
 
         # Drop first remaining session
-        if len(pdf) > 0:
+        if len(dfp) > 0:
             dropped_first_sessions += 1
-            pdf = pdf.iloc[1:].copy()
-            if len(pdf) == 0:
+            mydf = dfp.iloc[1:].copy()
+            if len(mydf) == 0:
                 participants_zero_retained += 1
         else:
             participants_zero_retained += 1
+            mydf = dfp.iloc[0:0].copy()
 
-        sessions_after_first_drop += len(pdf)
+        sessions_after_first_drop += len(mydf)
 
         # Minimum history condition: >= 10 retained sessions
-        if len(pdf) < MIN_RETAINED_SESSIONS:
+        number_sessions = len(mydf.index)
+        if number_sessions < MIN_RETAINED_SESSIONS:
             participants_lt_10 += 1
-            sessions_in_lt_10 += len(pdf)
+            sessions_in_lt_10 += number_sessions
             continue
 
         participants_before_density += 1
-        sessions_before_density += len(pdf)
+        sessions_before_density += number_sessions
 
         # Observation density condition: sessions >= span_days / 7.0
-        span_days = (pdf["StopTime"].max() - pdf["StartTime"].min()).days
+        span_days = (mydf["StopTime"].max() - mydf["StartTime"].min()).days
         required_sessions = span_days / 7.0
-        if len(pdf) < required_sessions:
+        if number_sessions < required_sessions:
             participants_excluded_density += 1
-            sessions_excluded_density += len(pdf)
+            sessions_excluded_density += number_sessions
             continue
 
-        # Retained participant
-        pdf["id"] = int_id
-        int_id += 1
+        # Unique id from original participant group enumeration
+        mydf["id"] = i
 
         # Calculate lag features
-        pdf["sessionsToday"] = calculate_sessions_today(pdf)
-        pdf["LastDuration"] = calculate_last_duration(pdf)
-        pdf["LastConsumedkWh"] = calculate_last_consumed_kwh(pdf)
+        tmp = mydf["StartTime"].dt.date
+        mydf["sessionsToday"] = tmp.groupby((tmp != tmp.shift()).cumsum()).cumcount()
+        mydf["LastDuration"] = dfp["Duration"].shift(1).to_numpy()[1:]
+        mydf["LastConsumedkWh"] = dfp["ConsumedkWh"].shift(1).to_numpy()[1:]
 
         # Availability stats tracking
-        spw = len(pdf) / (span_days / 7.0) if span_days > 0 else len(pdf)
+        spw = len(mydf) / (span_days / 7.0) if span_days > 0 else len(mydf)
         retained_spans.append(span_days)
         retained_spws.append(spw)
-        intervals = (pdf["StartTime"] - pdf["StartTime"].shift(1)).dropna().dt.total_seconds() / 86400.0
+        intervals = (mydf["StartTime"] - mydf["StartTime"].shift(1)).dropna().dt.total_seconds() / 86400.0
         if not intervals.empty:
             retained_intervals.append(float(intervals.mean()))
 
-        retained_participant_dfs.append(pdf)
+        retained_participant_dfs.append(mydf)
 
     # Step 9: Concatenation and global sorting
     if retained_participant_dfs:
@@ -226,7 +229,7 @@ def screen_and_prepare_dataset(
     else:
         final_df = pd.DataFrame(columns=CANONICAL_COLUMNS)
 
-    final_participants = int_id
+    final_participants = len(retained_participant_dfs)
     final_sessions = len(final_df)
 
     mean_span = float(np.mean(retained_spans)) if retained_spans else 0.0

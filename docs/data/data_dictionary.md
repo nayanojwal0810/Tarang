@@ -67,20 +67,23 @@ Hardware installation and vehicle registry records for participants in the Elect
 
 ## 3. Canonical Processed Dataset (`features.parquet`)
 
-The 30 columns present in `data/processed/electric_nation/features.parquet` (59,520 records across 267 participants):
+The 30 columns present in `data/processed/electric_nation/features.parquet` (59,520 records across 267 participants), listed in exact canonical sequence:
 
 | Column Name | Data Type | Category | Description | Domain / Observed Range |
 | :--- | :--- | :--- | :--- | :--- |
 | `StartTime` | `datetime64[ns, UTC]` | Source Field | Vehicle connection start timestamp (UTC). | `2017-03-01 21:09:00` to `2018-12-31 23:11:00` |
-| `StopTime` | `datetime64[ns, UTC]` | Source Field | Vehicle disconnection stop timestamp (UTC). | `2017-03-02 07:11:00` to `2019-01-01 21:52:00` |
+| `StopTime` | `datetime64[ns, UTC]` | Source Field | Vehicle disconnection stop timestamp (UTC, unmodified). | `2017-03-02 07:11:00` to `2019-01-01 21:52:00` |
 | `ParticipantID` | `object` | Source Field | Unique trial participant identifier. | 267 distinct IDs (`ENxxxx`) |
-| `ConsumedkWh` | `float64` | Target / Source | Delivered electrical energy during charging session. | $0.01$ to $37,487.88$ kWh; median: 7.16 kWh |
+| `ConsumedkWh` | `float64` | Target / Source | Delivered electrical energy during charging session. Retained without filtering missing energy. | $0.01$ to $37,487.88$ kWh; median: 7.16 kWh (1 missing value) |
 | `CarKW` | `float64` | Feature / Source | Vehicle onboard charger power rating. | `3.6` or `7.0` kW |
 | `CarKWh` | `float64` | Feature / Source | Vehicle usable battery capacity. | `6.2` to `100.0` kWh |
 | `PluggedInTime` | `int64` | Source Field | Total connection duration in minutes. | Min: 5 minutes; max: 470,693 minutes |
 | `ChargingDuration`| `float64` | Source Field | Net active charging duration in minutes. | 14,224 nulls (23.90%) |
 | `Hot_Unplug` | `object` | Source Field | Disconnection event status. | 13,514 nulls (22.70%) |
 | `Duration` | `float64` | Target | Elapsed plugged-in connection duration in hours, capped at 336.0h. | $0.0833$ to $336.0$ hours; median: 11.45 hours |
+| `weekday` | `int64` | Feature | Binary flag: 1 for Monday–Friday, 0 for Saturday–Sunday; 0 on Bank Holidays. | $\in \{0, 1\}$ |
+| `weekend` | `int64` | Feature | Binary flag: 1 for Saturday–Sunday, 0 for Monday–Friday; 0 on Bank Holidays. | $\in \{0, 1\}$ |
+| `holiday` | `int64` | Feature | Binary flag for 13 designated UK Bank Holidays. On holidays, both `weekday` and `weekend` are 0. | $\in \{0, 1\}$ |
 | `Mon` | `int64` | Day Flag | Binary indicator: Monday (1 if True, else 0). | $\in \{0, 1\}$ |
 | `Tue` | `int64` | Day Flag | Binary indicator: Tuesday (1 if True, else 0). | $\in \{0, 1\}$ |
 | `Wed` | `int64` | Day Flag | Binary indicator: Wednesday (1 if True, else 0). | $\in \{0, 1\}$ |
@@ -88,25 +91,22 @@ The 30 columns present in `data/processed/electric_nation/features.parquet` (59,
 | `Fri` | `int64` | Day Flag | Binary indicator: Friday (1 if True, else 0). | $\in \{0, 1\}$ |
 | `Sat` | `int64` | Day Flag | Binary indicator: Saturday (1 if True, else 0). | $\in \{0, 1\}$ |
 | `Sun` | `int64` | Day Flag | Binary indicator: Sunday (1 if True, else 0). | $\in \{0, 1\}$ |
-| `weekday` | `int64` | Feature | Day-of-week index (0 = Monday, 6 = Sunday; 0 on Bank Holidays). | $0 \le \text{weekday} \le 6$ |
-| `weekend` | `int64` | Feature | Weekend flag (1 if Saturday, Sunday, or Bank Holiday, else 0). | $\in \{0, 1\}$ |
-| `holiday` | `int64` | Feature | UK England & Wales statutory Bank Holiday flag. | $\in \{0, 1\}$ |
 | `month` | `int64` | Feature | Calendar month index (1 = January, 12 = December). | $1 \le \text{month} \le 12$ |
-| `StartHour` | `float64` | Time Field | Continuous arrival hour including minutes and seconds: $\text{hour} + \text{min}/60 + \text{sec}/3600$. | $[0.0, 23.9833]$ |
-| `StartHourNorm` | `float64` | Feature | StartHour normalized by dataset-wide maximum StartHour. | $[0.0, 1.0]$ |
-| `StartCos` | `float64` | Feature | Cyclical cosine of StartHour: $\cos(2\pi \cdot \text{StartHour} / 24)$. | $[-1.0, 1.0]$ |
-| `StartSin` | `float64` | Feature | Cyclical sine of StartHour: $\sin(2\pi \cdot \text{StartHour} / 24)$. | $[-1.0, 1.0]$ |
-| `TimeSinceLastStop` | `float64` | Feature | Elapsed hours between previous session stop and current start. | Min: 0.0, Max: 4,816.67 hours |
-| `sessionsToday` | `int64` | Feature | Prior sessions initiated by participant on same UTC calendar date. | $0 \le \text{sessionsToday} \le 7$ |
-| `LastDuration` | `float64` | Feature | Elapsed duration in hours of immediately preceding session. | $[0.0833, 336.0]$ hours |
-| `LastConsumedkWh`| `float64` | Feature | Delivered energy in kWh of immediately preceding session. | $[0.01, 37,487.88]$ kWh |
-| `id` | `int64` | Identifier | Dense integer participant ID ($0 \dots 266$). | Contiguous integers |
+| `StartHour` | `float64` | Time Field | Continuous arrival hour in UTC: $\text{hour} + \text{min}/60 + \text{sec}/3600$. | $[0.0, 23.9833]$ |
+| `StartHourNorm` | `float64` | Feature | Continuous arrival hour normalized by dataset maximum StartHour across filtered population. | $[0.0, 1.0]$ |
+| `StartCos` | `float64` | Feature | Cyclical cosine: $\cos(2\pi \cdot \text{StartHourNorm})$. | $[-1.0, 1.0]$ |
+| `StartSin` | `float64` | Feature | Cyclical sine: $\sin(2\pi \cdot \text{StartHourNorm})$. | $[-1.0, 1.0]$ |
+| `TimeSinceLastStop` | `float64` | Feature | Elapsed hours between immediately preceding session stop and current start. | Min: 0.0, Max: 4,816.67 hours |
+| `sessionsToday` | `int64` | Feature | Prior sessions initiated by participant on consecutive dates on or before StartTime. | $0 \le \text{sessionsToday} \le 7$ |
+| `LastDuration` | `float64` | Feature | Elapsed duration in hours of immediately preceding session. First retained session populated from dropped preceding session (zero missingness). | $[0.0833, 336.0]$ hours |
+| `LastConsumedkWh`| `float64` | Feature | Delivered energy in kWh of immediately preceding session. First retained session populated from dropped preceding session (1 missing value preserved). | $[0.01, 37,487.88]$ kWh |
+| `id` | `int64` | Identifier | Integer participant group enumeration index from `enumerate(groupby("ParticipantID", sort=True))`. Non-contiguous (values 1 to 298 across 267 participants). Not used as predictor. | Integer values $1 \dots 298$ |
 
 ---
 
 ## 4. Authoritative Predictors (13 Features)
 
-For supervised regression modeling, only these 13 features are used:
+For supervised regression modeling, only these 13 features are used (evaluated at arrival time $t_0 = \text{StartTime}$):
 1. `weekday`
 2. `weekend`
 3. `holiday`
