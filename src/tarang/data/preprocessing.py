@@ -271,7 +271,7 @@ def build_screened_and_model_ready_datasets(
     validate_input_datasets(df_tx, df_meta)
 
     logger.info("Executing participant screening sequence...")
-    df_screened_raw, _, screening_metrics = screen_participant_sessions(df_tx)
+    df_screened_raw, df_final_raw, screening_metrics = screen_participant_sessions(df_tx)
 
     if df_screened_raw.empty:
         empty_summary = {
@@ -293,34 +293,15 @@ def build_screened_and_model_ready_datasets(
         if col in df_screened.columns:
             df_screened.drop(columns=[col], inplace=True)
 
-    # Standardize mixed Excel date/time formatting in Max_Current_Drawn_for_T to string for Parquet serialization
+    # Standardize mixed Excel date/time formatting in Max_Current_Drawn_for_T to nullable string for Parquet serialization
     if "Max_Current_Drawn_for_T" in df_screened.columns:
-        df_screened["Max_Current_Drawn_for_T"] = df_screened["Max_Current_Drawn_for_T"].astype(str)
+        df_screened["Max_Current_Drawn_for_T"] = df_screened["Max_Current_Drawn_for_T"].astype("string")
 
     # --- Construct Final Warm-Start Modeling Dataset ---
-    logger.info("Constructing warm-start model-ready dataset...")
-    # Step 6: Drop unlagged first session per participant
-    df_screened["session_rank"] = df_screened.groupby("ParticipantID", sort=False).cumcount()
-    first_sessions_count = int(df_screened["ParticipantID"].nunique())
-    df_warm = df_screened[df_screened["session_rank"] > 0].copy()
-
-    # Step 7: Minimum history (>= 10 retained sessions after dropping first session)
-    retained_counts = df_warm.groupby("ParticipantID").size()
-    pids_min_history = retained_counts[retained_counts >= 10].index
-    df_warm = df_warm[df_warm["ParticipantID"].isin(pids_min_history)].copy()
-
-    # Step 8: Observation-density filtering (retained_session_count >= observation_days / 7.0)
-    density_calc = df_warm.groupby("ParticipantID").agg(
-        earliest_start=("StartTime", "min"),
-        latest_stop=("StopTime", "max"),
-        retained_session_count=("TransactionID", "count"),
-    )
-    density_calc["observation_days"] = (density_calc["latest_stop"] - density_calc["earliest_start"]).dt.days
-    density_calc["min_required_sessions"] = density_calc["observation_days"] / 7.0
-    density_calc["fails_density"] = density_calc["retained_session_count"] < density_calc["min_required_sessions"]
-    final_eligible_pids = density_calc[~density_calc["fails_density"]].index
-
-    df_model_ready = df_warm[df_warm["ParticipantID"].isin(final_eligible_pids)].copy()
+    logger.info("Selecting warm-start model-ready candidates from shared screening result...")
+    # Use unique TransactionIDs from df_final_raw to select candidate rows from feature-engineered screened dataset
+    final_tx_ids = set(df_final_raw["TransactionID"])
+    df_model_ready = df_screened[df_screened["TransactionID"].isin(final_tx_ids)].copy()
 
     # Exclude missing, non-numeric, non-finite, or non-positive targets
     valid_duration = (
@@ -352,9 +333,6 @@ def build_screened_and_model_ready_datasets(
     if df_model_ready["TransactionID"].duplicated().any():
         raise ValueError("Integrity error: Duplicate TransactionID found in model_ready_sessions.")
 
-    # Remove temporary session_rank from df_screened
-    df_screened.drop(columns=["session_rank"], inplace=True)
-
     # Compile dynamic processing summary
     summary: Dict[str, Any] = {
         "input_transactions_count": len(df_tx),
@@ -367,7 +345,7 @@ def build_screened_and_model_ready_datasets(
         "screened_overlaps": screening_metrics.get("screened_overlaps", 0),
         "sessions_after_overlap_removal": len(df_screened),
         "participants_after_overlap_removal": int(df_screened["ParticipantID"].nunique()),
-        "first_sessions_excluded_warm_start": first_sessions_count,
+        "first_sessions_excluded_warm_start": screening_metrics.get("dropped_first_sessions", 0),
         "participants_after_first_session_drop": screening_metrics.get("participants_after_dropped_first", 0),
         "sessions_after_first_session_drop": screening_metrics.get("retained_sessions_total", 0),
         "participants_passing_minimum_history": screening_metrics.get("participants_before_density", 0),
@@ -432,7 +410,7 @@ def save_processed_datasets(
     logger.info("Writing %s (%d rows)...", screened_file.name, len(df_screened))
     df_screened_to_save = df_screened.copy()
     if "Max_Current_Drawn_for_T" in df_screened_to_save.columns:
-        df_screened_to_save["Max_Current_Drawn_for_T"] = df_screened_to_save["Max_Current_Drawn_for_T"].astype(str)
+        df_screened_to_save["Max_Current_Drawn_for_T"] = df_screened_to_save["Max_Current_Drawn_for_T"].astype("string")
     df_screened_to_save.to_parquet(screened_file, engine="pyarrow", index=False)
 
     logger.info("Writing %s (%d rows)...", model_ready_file.name, len(df_model_ready))

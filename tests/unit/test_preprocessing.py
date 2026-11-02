@@ -507,3 +507,57 @@ def test_input_validation_catches_invalid_datasets() -> None:
     df_meta_missing = df_meta[df_meta["ParticipantID"] != "EN001"]
     with pytest.raises(ValueError, match="not found in metadata"):
         validate_input_datasets(df_tx, df_meta_missing)
+
+
+def test_model_ready_candidate_tx_ids_match_shared_screening() -> None:
+    """Confirm that when synthetic inputs have valid targets, model-ready TransactionIDs match shared screening."""
+    df_tx, df_meta = make_valid_meta_and_tx(n_sessions=15, spacing_hours=24.0)
+
+    # Obtain shared screening directly
+    _, df_final_raw, _ = screen_participant_sessions(df_tx)
+
+    # Obtain pipeline model-ready output
+    _, df_model_ready, _ = build_screened_and_model_ready_datasets(df_tx, df_meta)
+
+    # When targets are valid, candidate TransactionIDs in model-ready must match df_final_raw exactly
+    assert set(df_model_ready["TransactionID"]) == set(df_final_raw["TransactionID"])
+    assert len(df_model_ready) == len(df_final_raw)
+
+
+def test_mixed_excel_column_preserves_nulls_in_parquet(tmp_path: Path) -> None:
+    """Test that mixed Excel column (datetime, time, missing) preserves nulls in Parquet without 'nan' strings."""
+    import datetime
+
+    df_tx, df_meta = make_valid_meta_and_tx(n_sessions=12, spacing_hours=24.0)
+    # Inject mixed datetime, time, float, and genuine nulls in Max_Current_Drawn_for_T
+    mixed_values = [
+        datetime.datetime(1900, 2, 1, 10, 4, 48),
+        datetime.time(12, 30, 0),
+        np.nan,
+        None,
+        16.0,
+        32.0,
+        datetime.datetime(1900, 1, 1, 8, 0, 0),
+        datetime.time(6, 15, 30),
+        np.nan,
+        None,
+        16.0,
+        datetime.datetime(1900, 2, 1, 14, 0, 0),
+    ]
+    df_tx["Max_Current_Drawn_for_T"] = mixed_values
+    original_missing_count = sum(pd.isna(v) for v in mixed_values)  # 4 missing values
+
+    df_screened, df_model_ready, summary = build_screened_and_model_ready_datasets(df_tx, df_meta)
+    file_map = save_processed_datasets(df_screened, df_model_ready, summary, tmp_path)
+
+    # Read back screened_sessions.parquet
+    df_screened_in = pd.read_parquet(file_map["screened_sessions"])
+    assert "Max_Current_Drawn_for_T" in df_screened_in.columns
+
+    col = df_screened_in["Max_Current_Drawn_for_T"]
+    # 1. Column remains readable
+    assert len(col) == len(df_screened)
+    # 2. Original missing-value count is preserved
+    assert int(col.isna().sum()) == original_missing_count
+    # 3. Missing values have NOT become the literal string "nan"
+    assert (col == "nan").sum() == 0
