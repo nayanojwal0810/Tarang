@@ -33,6 +33,35 @@ RAW_META_SHEET: str = "20181126_ChargerInstall_DriveEl"
 PROCESSED_FEATURES_FILE: Path = DATA_PROCESSED_DIR / "features.parquet"
 PROCESSING_SUMMARY_FILE: Path = DATA_PROCESSED_DIR / "processing_summary.json"
 
+# Modeling directories and targets
+MODELING_DIR: Path = DATA_PROCESSED_DIR / "modeling"
+DURATION_MODELING_DIR: Path = MODELING_DIR / "duration"
+ENERGY_MODELING_DIR: Path = MODELING_DIR / "energy"
+
+TARGET_DURATION: str = "Duration"
+TARGET_ENERGY: str = "ConsumedkWh"
+
+LAG_FEATURE_DURATION: str = "LastDuration"
+LAG_FEATURE_ENERGY: str = "LastConsumedkWh"
+
+TARGET_LAG_MAP: dict[str, str] = {
+    TARGET_DURATION: LAG_FEATURE_DURATION,
+    TARGET_ENERGY: LAG_FEATURE_ENERGY,
+}
+
+MODEL_NAMES: List[str] = [
+    "LinearRegression",
+    "QuantileRegressor",
+    "HistGradientBoostingRegressor",
+    "MedianValue",
+    "MeanValue",
+    "LastValue",
+]
+
+TEST_SPLIT_SIZE: float = 0.2
+SPLIT_RANDOM_STATE: int = 42
+MODEL_RANDOM_STATE: int = 0
+
 # Reports directories
 REPORTS_DIR: Path = PROJECT_ROOT / "reports"
 AUDIT_REPORTS_DIR: Path = REPORTS_DIR / "data_audit"

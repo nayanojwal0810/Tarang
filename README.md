@@ -45,6 +45,7 @@ Tarang/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
 |   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
 |   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
+|   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
 |   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
@@ -67,6 +68,11 @@ Tarang/
 |       |   |-- time_features.py     # StartHour, StartHourNorm, cyclical StartCos / StartSin
 |       |   |-- historical_features.py # TimeSinceLastStop, sessionsToday, LastDuration, LastConsumedkWh
 |       |   |-- feature_engineering.py # Authoritative 13 feature definitions and extraction
+|       |-- modeling/                # Predictive modeling and benchmark regressors
+|       |   |-- __init__.py
+|       |   |-- models.py            # Benchmark regressors (LR, QR, HGB) and baselines (Mean, Median, LastValue)
+|       |   |-- metrics.py           # Reference-aligned evaluation metrics and error distribution statistics
+|       |   |-- experiment.py        # Chronological split, training, evaluation, and artifact persistence
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -76,14 +82,16 @@ Tarang/
 |
 |-- tests/
 |   |-- __init__.py
-|   |-- unit/                        # Fast, isolated unit test suite (61 tests)
+|   |-- unit/                        # Fast, isolated unit test suite
 |   |   |-- test_audit.py
 |   |   |-- test_loading.py
 |   |   |-- test_screening.py
 |   |   |-- test_features.py
 |   |   |-- test_eda.py
-|   |-- integration/                 # End-to-end integration tests on real workbooks (2 tests)
+|   |   |-- test_modeling.py
+|   |-- integration/                 # End-to-end integration tests on real workbooks and datasets
 |       |-- test_data_pipeline.py
+|       |-- test_modeling_pipeline.py
 |
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
@@ -225,8 +233,25 @@ Generated EDA artifacts:
 - `reports/eda/energy_by_start_hour.png`: 2D joint histogram of energy consumption vs. local arrival hour (0.5h, 0.5 kWh bins, 75 kWh cutoff, log scale).
 - `reports/eda/charging_flexibility.png`: Density distributions of flexibility ratios for same-day vs. overnight sessions.
 
-### 4. Run Test Suite
-Run the full 63-test test suite (61 unit tests and 2 integration tests):
+### 4. Run Predictive Modeling Benchmark
+Executes the established dual-target benchmark regression pipeline across both prediction targets (`Duration` and `ConsumedkWh`) using the 13 canonical predictors, chronological 80/20 train/test split, and the six benchmark models:
+
+```bash
+python scripts/run_modeling.py
+```
+
+Generated modeling artifacts stored in `data/processed/electric_nation/modeling/`:
+- `duration/`:
+  - `models/`: Trained serialized models (`LinearRegression.joblib`, `QuantileRegressor.joblib`, `HistGradientBoostingRegressor.joblib`, `MedianValue.joblib`, `MeanValue.joblib`, `LastValue.joblib`).
+  - `performance.csv`: 3-level MultiIndex matrix containing aggregate (`ALL`) and per-participant metrics (`medae`, `mae`, `medape`, `mape`, `rmse`, `smape`, and `ae`/`ape` whisker statistics) across Train and Test splits.
+  - `predictions.csv`: Canonical session records with split labels (`Train`/`Test`) and model predictions.
+- `energy/`:
+  - `models/`: Trained serialized models for energy consumption.
+  - `performance.csv`: 3-level MultiIndex performance matrix for energy consumption.
+  - `predictions.csv`: Canonical session records and energy predictions.
+
+### 5. Run Test Suite
+Run the full test suite including unit tests and integration tests:
 
 ```bash
 python -m pytest tests/ -v

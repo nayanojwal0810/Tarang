@@ -1,7 +1,7 @@
 # TARANG — Architecture and Project Structure
 
 **Domain**: Electric Vehicle Charging Intelligence System  
-**Current Stage**: Stage 1 — Project Foundation, Data Preparation Pipeline, Feature Engineering, and Exploratory Data Analysis  
+**Current Stage**: Stage 2 — Benchmark Predictive Modeling (Dual-Target Regression)  
 **Repository**: `nayanojwal0810/Tarang`
 
 ---
@@ -57,6 +57,7 @@ Tarang/
 |   |-- run_data_audit.py            # CLI entry point: run data quality audit
 |   |-- prepare_data.py              # CLI entry point: data screening and feature engineering
 |   |-- run_eda.py                   # CLI entry point: run exploratory data analysis and plot figures
+|   |-- run_modeling.py              # CLI entry point: dual-target regression benchmark pipeline
 |   |-- prepare_modeling_data.py     # Backward-compatible CLI shim for legacy workflows
 |
 |-- src/
@@ -79,6 +80,11 @@ Tarang/
 |       |   |-- time_features.py     # StartHour, StartHourNorm, cyclical StartCos / StartSin
 |       |   |-- historical_features.py # TimeSinceLastStop, sessionsToday, LastDuration, LastConsumedkWh
 |       |   |-- feature_engineering.py # Authoritative 13 feature definitions and extraction
+|       |-- modeling/                # Predictive modeling and benchmark regressors
+|       |   |-- __init__.py
+|       |   |-- models.py            # Benchmark regressors (LR, QR, HGB) and baselines (Mean, Median, LastValue)
+|       |   |-- metrics.py           # Reference-aligned evaluation metrics and error distribution statistics
+|       |   |-- experiment.py        # Chronological split, training, evaluation, and artifact persistence
 |       |-- analysis/                # Statistical analysis and EDA
 |       |   |-- __init__.py
 |       |   |-- exploratory_data_analysis.py # Availability, flexibility, and bivariate distributions
@@ -88,14 +94,16 @@ Tarang/
 |
 |-- tests/
 |   |-- __init__.py
-|   |-- unit/                        # Fast, isolated unit test suite (61 tests)
+|   |-- unit/                        # Fast, isolated unit test suite
 |   |   |-- test_audit.py
 |   |   |-- test_loading.py
 |   |   |-- test_screening.py
 |   |   |-- test_features.py
 |   |   |-- test_eda.py
-|   |-- integration/                 # End-to-end integration tests on real workbooks (2 tests)
+|   |   |-- test_modeling.py
+|   |-- integration/                 # End-to-end integration tests on real workbooks and datasets
 |       |-- test_data_pipeline.py
+|       |-- test_modeling_pipeline.py
 |
 |-- .gitignore
 |-- pyproject.toml                   # Modern PEP 517/621 package build configuration
@@ -154,6 +162,11 @@ Tarang/
 ### 3.5 `tarang.visualization`
 - **`eda_plots.py`**: Generates publication-quality, self-contained PNG figures with marginal distributions, log-scale heatmaps, and annotated summary stats.
 
+### 3.6 `tarang.modeling`
+- **`models.py`**: Benchmark regression models (`LinearRegression`, `QuantileRegressor`, `HistGradientBoostingRegressor`) and baselines (`MeanValue`, `MedianValue`, and target-specific `LastValue`). Configures model factory in exact reference order.
+- **`metrics.py`**: Reference-aligned evaluation metrics (`medae`, `mae`, `medape`, `mape`, `rmse`, `smape`) and error-distribution statistics (`q1`, `q2`, `q3`, and whisker limits `wl`, `wh` for absolute and percentage errors).
+- **`experiment.py`**: Validates canonical inputs, performs chronological 80/20 train/test split, trains models, tracks predictions, evaluates aggregate (`ALL`) and per-participant metrics, and persists models and CSV artifacts.
+
 ---
 
 ## 4. Future Architecture Roadmap
@@ -169,11 +182,11 @@ flowchart TD
         CanonicalParquet --> EDA["Descriptive EDA &\nFlexibility Analysis"]
     end
 
-    subgraph Stage2["Stage 2: Benchmark Predictive Modeling (Planned)"]
-        CanonicalParquet --> Split["Evaluation Data Splits"]
-        Split --> Baselines["Baseline Models"]
-        Split --> Regressors["Dual-Target Regressors\n(Duration & Energy)"]
-        Regressors --> Eval["Performance Evaluation\n& Benchmarking"]
+    subgraph Stage2["Stage 2: Benchmark Predictive Modeling (Completed)"]
+        CanonicalParquet --> Split["Chronological 80/20 Split"]
+        Split --> Baselines["Baseline Models\n(Mean, Median, LastValue)"]
+        Split --> Regressors["Dual-Target Regressors\n(LR, QR, HGB)"]
+        Regressors --> Eval["Performance Evaluation\n(Aggregate & Participant)"]
     end
 
     subgraph Stage3["Stage 3: Explainability & Decision Support (Planned)"]
@@ -184,8 +197,9 @@ flowchart TD
 ```
 
 1. **Stage 2 — Predictive Modeling**:
-   - `tarang.models`: Predictive regressors for plugged-in duration and energy consumption.
-   - `tarang.evaluation`: Evaluation splits and standard regression performance metrics.
+   - `tarang.modeling.models`: Benchmark regressors and baselines for plugged-in duration and energy consumption.
+   - `tarang.modeling.metrics`: Established regression metrics and whisker distribution statistics.
+   - `tarang.modeling.experiment`: Chronological train/test splitting, training, evaluation, and artifact persistence.
 2. **Stage 3 — Explainability & Decision Support**:
    - `tarang.explainability`: Global and local feature attribution and behavior explanation.
    - `tarang.decision_support`: Advisory analytics for charging flexibility, bay planning, and demand shifting.
